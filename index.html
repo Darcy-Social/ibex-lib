@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>IBEX</title>
+  <link rel="stylesheet" href="styles/main.css">
+</head>
+<style>
+  .post {
+    border: solid black 1px;
+    padding: 1em;
+  }
+</style>
+
+<body>
+  <h1>IBEX 🐐<span id="origin"></span></h1>
+  <p id="login">
+    You are not logged in.
+    <button id="loginbutton">log in</button>
+  </p>
+  <div id="logout" style="visibility: none;">
+    <p> You are logged in as <span id="user"></span>.</p>
+    <button id="logoutbutton">log out</button>
+    <div>
+      <h2>Run Ibex Tests</h2>
+      <button id="run">Run!</button>
+    </div>
+    <div id="logresults">
+
+    </div>
+  </div>
+
+  <script src="libs/jquery.js"></script>
+  <script src="libs/solid-auth-client.bundle.js"></script>
+  <script src="libs/rdflib.min.js"></script>
+  <script type="module" src="ibex.js"></script>
+
+  <script type="module">
+
+    import ibextest from "./tests/ibex-test.js";
+    import Ibex from "./ibex.js";
+
+    var log = (data) => { $('#logresults').append($('<p>').text(data)) }
+    window.addEventListener("load", function () {
+      const FOAF = $rdf.Namespace('http://xmlns.com/foaf/0.1/');
+
+      // Log the user in and out on click
+      const popupUri = 'popup.html';
+      $('#loginbutton').click(() => solid.auth.popupLogin({ popupUri }));
+      $('#logoutbutton').click(() => { solid.auth.logout().then(() => { updateUI() }) });
+      $('#logout').toggle();
+
+      let currentSession = null;
+
+
+      $('#run').click(() => {
+        $('#logresults').empty();
+
+        ibextest.run();
+      });
+
+
+      solid.auth.trackSession(session => {
+        const loggedIn = !!session;
+        currentSession = session;
+        console.log(loggedIn);
+        $('#login').toggle(!loggedIn);
+        $('#logout').toggle(loggedIn);
+        if (loggedIn) {
+
+          $('#user').text(session.webId);
+
+          $('#origin').text(new URL(session.webId).origin);
+          // Use the user's WebID as default profile
+          if (!$('#profile').val()) {
+            $('#profile').val(session.webId);
+          }
+        }
+        updateUI();
+
+
+
+      });
+
+    });
+
+    function updateUI() {
+
+
+      // $.get('https://ibex.darcy.is/feed.php',function(data){
+      //         $('#feed').empty();
+
+      //         data.forEach(aPost => {
+      //             $('#feed').append(
+      //                 $('<div>').addClass('post').append(
+      //                     $('<h4>').text(aPost['domain'] + ' '+aPost['last_update']),
+      //                     $('<div>').html( writer.render(reader.parse(aPost.body)) )
+      //                 )
+      //             )   
+      //         });
+      // });
+    }
+
+
+
+  </script>
+</body>
+
+</html>
