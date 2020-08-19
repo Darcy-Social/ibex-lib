@@ -26,14 +26,16 @@
       <h2>Run Ibex Tests</h2>
       <button id="run">Run!</button>
     </div>
-    <div id="logresults">
-
-    </div>
+    <div id="logchecks"></div>
+    <div id="logresults"></div>
   </div>
 
   <script src="libs/jquery.js"></script>
   <script src="libs/solid-auth-client.bundle.js"></script>
   <script src="libs/rdflib.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/solid-acl-parser/dist/browser/solid-acl-parser.bundle.js"></script>
+  <script src="libs/solid-acl-utils.bundle.js"> </script>
+
   <script type="module" src="ibex.js"></script>
 
   <script type="module">
@@ -53,10 +55,9 @@
 
       let currentSession = null;
 
-
       $('#run').click(() => {
         $('#logresults').empty();
-
+        $('#logchecks').empty();
         ibextest.run();
       });
 

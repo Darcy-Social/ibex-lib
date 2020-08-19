@@ -1,3 +1,4 @@
+
 // import { $rdf } from "./libs/rdflib.min.js";
 const FOAF = $rdf.Namespace('http://xmlns.com/foaf/0.1/');
 
@@ -9,24 +10,26 @@ const FOAF = $rdf.Namespace('http://xmlns.com/foaf/0.1/');
 // console.log(log);
 // log("ibex library loaded");
 var log = (...data) => {
+    data = data || false;
     if (!$) {
         console.log(data);
-        return
+        return data[0]
     }
 
     $('#logresults').append($('<pre>').text(
         data.map(
             (e) => {
-                return ('string' !== typeof e) ? JSON.stringify(e) : e
+                return ('string' !== typeof e) ? JSON.stringify(e, null, 2) : e
             }
 
-        ).join(" ")))
+        ).join(" ")));
+    return data[0]
 }
 
 class Ibex {
     myPod = null;
     myDomain = null;
-    defaultFeed = 'public/main';
+    defaultFeed = 'feed/main';
     myRootPath = 'is.darcy';
 
     constructor(myPod) {
@@ -38,26 +41,18 @@ class Ibex {
         return this.myDomain + '/' + this.myRootPath;
     }
 
-    willFetch(url, pars) {
-        pars = pars || {};
-        pars.method = pars.method || 'GET';
 
-        return new Promise(
-            (resolve, reject) => {
-                solid.auth.fetch(
-                    url,
-                    pars
-                ).then(response => {
-                    ///log("fetch:", pars.method, url, " response:", response.status, response.statusText);
-                    if (!response || (response.status !== 201 && response.status !== 200)) {
-                        log(url, "result:", response.status, response.statusText);
-                        reject({ failure: response });
-                    } else {
-                        resolve(response);
-                    }
-                })
-            }
-        );
+    getPostText(url) { return this.getText(url); }
+    getText(url) {
+        return this.willFetch(url).then(
+            (res) => res.text()
+        )
+    }
+    deletePost(url) {
+        return this.delete(url)
+    }
+    delete(url) {
+        return this.willFetch(url, { method: 'DELETE' })
     }
 
     makePath(container, newFolder) {
@@ -66,16 +61,16 @@ class Ibex {
             container += '/' + newFolder;
         }
         [newFolder, container] = this.basePath(container);
-        log('mkdir', container, newFolder);
+        //log('mkdir', container, newFolder);
 
         let path = container + newFolder;
         return this.willFetch(path).
             catch(() => {
-                log(`let's see if ${container} exists first...`);
+                //log(`let's see if ${container} exists first...`);
                 return this.makePath(container).then(
                     () => {
 
-                        log(`we did not find path '${path}', let's try to create '${newFolder}' in '${container}'`);
+                        //log(`we did not find path '${path}', let's try to create '${newFolder}' in '${container}'`);
 
                         return this.willFetch(
                             container,
@@ -88,15 +83,30 @@ class Ibex {
             });
     }
     createFeed(feedName) {
-        return this.makePath(this.root(), feedName);
+        return this.makePath(this.root(), feedName)
     }
-    post(content, feed, slug) {
-        if (!content) { return Promise.reject("Empty post") }
+    post(content, feed, slug, nocomment) {
+        if (!content) { return Promise.reject("Missing content, won't publish") }
         feed = feed || this.defaultFeed;
-        slug = (slug || ts()).replace(/[^a-zA-Z0-9_]/, '-');
+        nocomment = nocomment || false;
 
-        let uri = this.root() + '/' + feed + '/' + slug;
-        return this.willFetch(uri, { method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: content });
+        let now = new Date();
+
+        slug = urlflatten(slug || ts(now));
+
+        let path = [
+            this.root(),
+            feed,
+            ("" + now.getFullYear()).padStart(4, '0'),
+            ("" + (1 + now.getMonth())).padStart(2, '0'),
+            ("" + now.getDate()).padStart(2, '0')
+        ].join('/');
+
+        let uri = path + "/" + slug + ".md";
+
+        return this.makePath(path).then(
+            () => this.willFetch(uri, { method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: content })
+        )
     }
 
     /**
@@ -123,7 +133,7 @@ class Ibex {
     }
 
     urlDomain(url) {
-        log("getting domain of ", url);
+        //log("getting domain of ", url);
         var a = document.createElement('a');
 
         a.href = url;
@@ -131,7 +141,33 @@ class Ibex {
         return a.protocol + '//' + a.hostname;
     }
 
+    willFetch(url, pars) {
+        pars = pars || {};
+        pars.method = pars.method || 'GET';
 
+        return new Promise(
+            (resolve, reject) => {
+                solid.auth.fetch(
+                    url,
+                    pars
+                ).then(response => {
+                    ///log("fetch:", pars.method, url, " response:", response.status, response.statusText);
+                    if (!response || (response.status !== 201 && response.status !== 200)) {
+                        //log(url, "result:", response.status, response.statusText);
+                        reject(response);
+                    } else {
+                        resolve(response);
+                    }
+                })
+            }
+        );
+    }
+
+}
+
+function urlflatten(s) {
+    return encodeURIComponent(s);
+    //return s.replace(/[^a-zA-Z0-9_]/, '-');
 }
 
 function ts(date) {
