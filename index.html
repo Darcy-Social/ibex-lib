@@ -65,7 +65,6 @@
       solid.auth.trackSession(session => {
         const loggedIn = !!session;
         currentSession = session;
-        console.log(loggedIn);
         $('#login').toggle(!loggedIn);
         $('#logout').toggle(loggedIn);
         if (loggedIn) {
@@ -89,18 +88,6 @@
     function updateUI() {
 
 
-      // $.get('https://ibex.darcy.is/feed.php',function(data){
-      //         $('#feed').empty();
-
-      //         data.forEach(aPost => {
-      //             $('#feed').append(
-      //                 $('<div>').addClass('post').append(
-      //                     $('<h4>').text(aPost['domain'] + ' '+aPost['last_update']),
-      //                     $('<div>').html( writer.render(reader.parse(aPost.body)) )
-      //                 )
-      //             )   
-      //         });
-      // });
     }
 
 

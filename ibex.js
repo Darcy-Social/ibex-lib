@@ -2,13 +2,13 @@
 // import { $rdf } from "./libs/rdflib.min.js";
 const FOAF = $rdf.Namespace('http://xmlns.com/foaf/0.1/');
 
-// if (!log) {
-//     log = console.log;
-//     console.log('overriding log in ibex');
-// }
+const LDP = $rdf.Namespace("http://www.w3.org/ns/ldp#");
+const RDF = $rdf.Namespace("http://www.w3.org/1999/02/22-rdf-syntax-ns#")
 
-// console.log(log);
-// log("ibex library loaded");
+const { AclApi, AclParser, Permissions, Agents } = SolidAclUtils;
+const { READ, WRITE, CONTROL } = Permissions;
+
+
 var log = (...data) => {
     data = data || false;
     if (!$) {
@@ -27,20 +27,18 @@ var log = (...data) => {
 }
 
 class Ibex {
-    myPod = null;
+    me = null;
     myDomain = null;
-    defaultFeed = 'feed/main';
     myRootPath = 'is.darcy';
+    feedLocation = "feed";
+    defaultFeed = 'main';
 
-    constructor(myPod) {
-        this.myPod = myPod;
-        this.myDomain = this.urlDomain(myPod);
+    constructor(me) {
+        this.me = me;
+        this.myDomain = this.urlDomain(me);
     }
-
-    root() {
-        return this.myDomain + '/' + this.myRootPath;
-    }
-
+    root() { return this.myDomain + '/' + this.myRootPath; }
+    feedRoot() { return this.root() + '/' + this.feedLocation; }
 
     getPostText(url) { return this.getText(url); }
     getText(url) {
@@ -53,6 +51,9 @@ class Ibex {
     }
     delete(url) {
         return this.willFetch(url, { method: 'DELETE' })
+    }
+    loadAcl(url) {
+        return new AclApi(solid.auth.fetch.bind(solid.auth), { autoSave: true }).loadFromFileUrl(url);
     }
 
     makePath(container, newFolder) {
@@ -78,13 +79,59 @@ class Ibex {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'text/turtle', 'Link': '<http://www.w3.org/ns/ldp#BasicContainer>; rel="type"', "Slug": newFolder }
                             }
-                        );
+                        ).then(res => this.willFetch(path));
                     });
             });
     }
     createFeed(feedName) {
-        return this.makePath(this.root(), feedName)
+        return this.makePath(this.feedRoot(), feedName)
+            .then((res) => this
+                .loadAcl(res.url)
+                .then((acl) => {
+
+                    let ensureDefaultRule = (privilege, agent) => {
+                        if (!acl.hasDefaultRule(privilege, agent)) { acl.addDefaultRule(privilege, agent) }
+                    }
+
+                    ensureDefaultRule([WRITE, READ, CONTROL], this.me);
+                    ensureDefaultRule(READ, Agents.PUBLIC);
+
+                    return acl.saveToPod()
+                        .then((acl) => this.willFetch(res.url))
+                }))
     }
+
+    deleteRecursive(folder) {
+        return this._deleteRecursive($rdf.sym(folder))
+    }
+
+    _deleteRecursive(folder) {
+        if (!folder.uri.startsWith(this.root())) {
+            return Promise.reject("Invalid path: can't delete " + folder.uri)
+        }
+
+        const store = $rdf.graph();
+        const fetcher = new $rdf.Fetcher(store);
+
+        return new Promise((resolve, reject) => {
+            fetcher.load(folder).then(() => {
+                //log(store.each(folder, LDP('contains'), null));
+
+                let promises = store.each(folder, LDP('contains'), null).map(file => {
+                    if (store.holds(file, RDF('type'), LDP('BasicContainer'))) {
+                        return this._deleteRecursive(file)
+                    } else {
+                        return fetcher.webOperation('DELETE', file.uri)
+                    }
+                });
+
+                return Promise.all(promises)
+                    .then(() => fetcher.webOperation('DELETE', folder.uri))
+                    .then(res => { resolve() })
+            })
+        })
+    }
+
     post(content, feed, slug, nocomment) {
         if (!content) { return Promise.reject("Missing content, won't publish") }
         feed = feed || this.defaultFeed;
@@ -95,7 +142,7 @@ class Ibex {
         slug = urlflatten(slug || ts(now));
 
         let path = [
-            this.root(),
+            this.feedRoot(),
             feed,
             ("" + now.getFullYear()).padStart(4, '0'),
             ("" + (1 + now.getMonth())).padStart(2, '0'),
@@ -104,9 +151,15 @@ class Ibex {
 
         let uri = path + "/" + slug + ".md";
 
-        return this.makePath(path).then(
-            () => this.willFetch(uri, { method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: content })
-        )
+        return this.createFeed(feed)
+            .then(() => this.makePath(path))
+            .then(
+                () => this.willFetch(
+                    uri, {
+                    method: 'PUT', headers: { 'Content-Type': 'text/plain' },
+                    body: content
+                })
+            )
     }
 
     /**

@@ -20,7 +20,6 @@ let ibextest = {
         this.testIndex = 0;
         this.runtest();
 
-
     },
 
     runtest() {
@@ -45,15 +44,16 @@ let ibextest = {
 
     tests: [
         () => {
-            let feed = ibex.root() + '/' + ibex.defaultFeed + '/';
-            let acl = null;
             return ibex
                 .createFeed(ibex.defaultFeed)
-                .then(assertGoodResponse).catch((res) => fail(`can't create feed ${res.url}`))
+                .catch((res) => fail(`can't create feed ${res.url}`))
+                .then((res) => ibex.willFetch(res.url))
+                .then((res) => assertGoodResponse(res, "can't fetch feed ", res.url, "I just created"))
+                .then((res) => aclApi.loadFromFileUrl(res.url))
+                .then((doc) => assertTrue(doc.hasRule(READ, Agents.PUBLIC), "PUBLIC should have READ privilege"))
         },
         () => {
             let content = "test post " + Math.random();
-
             return ibex.post(content).then(
                 res => ibex.willFetch(res.url)
             ).then((res) => {
@@ -62,10 +62,10 @@ let ibextest = {
                 ibex.getPostText(res.url).then((t) => assertEqual(content, t, "the body of the post should be what we posted"))
                 return ibex.deletePost(res.url);
             }).then((res) => {
-                assertGoodResponse(res, "delete failed");
+                assertGoodResponse(res, "I can't delete the post I just posted");
                 return ibex.willFetch(res.url)
             }).catch((res) => {
-                assertEqual(res.status, 404, "post should have been posted and then deleted");
+                assertEqual(res.status, 404, "Post should have been deleted, but is somehow still there");
                 return res;
             })
         },
@@ -76,9 +76,7 @@ let ibextest = {
             }).then((r) => {
                 fail("Darcy should not be able to write the file", r.url)
                 return ibex.delete(r.url)
-            }).catch((r) => {
-                pass("Darcy is not able to write in your root, good")
-            })
+            }).catch((r) => pass("Darcy is not able to write in your root, good"))
         },
         () => {
             let giulio = 'https://giulio.localhost/profile/card#me';
@@ -95,38 +93,58 @@ let ibextest = {
                     return doc.deleteRule(READ, giulio);
                 }).then(aclApi.loadFromFileUrl(fileUrl)) //againnnnn
                 .then((doc) => {
-                    assertTrue(!doc.hasRule(READ, giulio), "giulio should not have READ privilege");
+                    return assertTrue(!doc.hasRule(READ, giulio), "giulio should not have READ privilege");
                 });
         },
+        () => {
+            let testFeed = "testdeletefeed";
+            let testContent = "content test post to be deleted " + new Date();
+            let feedUrl = null;
+            let postUrl = null;
 
-
+            return ibex.createFeed(testFeed)
+                .then((res) => {
+                    feedUrl = res.url;
+                    return ibex.post(testContent, testFeed)
+                })
+                .then(assertGoodResponse)
+                .then(res => {
+                    postUrl = res.url;
+                    return ibex.getPostText(postUrl)
+                })
+                .then(postText => assertEqual(postText, testContent))
+                .then(() => ibex.deleteRecursive(feedUrl))
+                .then(() => {
+                    return ibex.willFetch(feedUrl)
+                        .then((res) => fail("Darcy should not be able to read the feed", r.url))
+                        .catch((res) => pass())
+                })
+        }
     ]
-
-
 };
-function assertGoodResponse(response, banner) {
+function assertGoodResponse(response, ...banner) {
     banner = banner || '';
     let success = (response.status == 200 || response.status == 201);
     if (success) {
         pass();
     } else {
-        fail(banner, response.status, response.statusText);
+        fail(...banner, response.status, response.statusText);
     }
     return response;
 }
 
-function assertTrue(a, banner) {
+function assertTrue(a, ...banner) {
     banner = banner || '';
-    (!!a) ? pass() : fail(banner, '[', a, '] should have been true-ish');
+    (!!a) ? pass() : fail(...banner, '[', a, '] should have been true-ish');
     return !!a;
 }
-function assertEqual(a, a1, banner) {
+function assertEqual(a, a1, ...banner) {
     banner = banner || '';
     let equal = a === a1;
     if (equal) {
         pass();
     } else {
-        fail(banner, '[', a, ']', "not equal to", '[', a1, ']');
+        fail(banner, "Expected [", a1, ']', "should have been", '[', a, ']');
     }
     return equal;
 
