@@ -132,7 +132,7 @@ class Ibex {
         })
     }
 
-    post(content, feed, slug, nocomment) {
+    createPost(content, feed, slug, nocomment) {
         if (!content) { return Promise.reject("Missing content, won't publish") }
         feed = feed || this.defaultFeed;
         nocomment = nocomment || false;

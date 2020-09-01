@@ -54,7 +54,7 @@ let ibextest = {
         },
         () => {
             let content = "test post " + Math.random();
-            return ibex.post(content).then(
+            return ibex.createPost(content).then(
                 res => ibex.willFetch(res.url)
             ).then((res) => {
                 assertGoodResponse(res, "the post should have been posted");
@@ -105,7 +105,7 @@ let ibextest = {
             return ibex.createFeed(testFeed)
                 .then((res) => {
                     feedUrl = res.url;
-                    return ibex.post(testContent, testFeed)
+                    return ibex.createPost(testContent, testFeed)
                 })
                 .then(assertGoodResponse)
                 .then(res => {
