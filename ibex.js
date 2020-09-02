@@ -28,17 +28,34 @@ var log = (...data) => {
 
 class Ibex {
     me = null;
-    myDomain = null;
+    myHost = null;
     myRootPath = 'is.darcy';
     feedLocation = "feed";
     defaultFeed = 'main';
+    settingsFileBasename = 'config.json'
 
     constructor(me) {
         this.me = me;
-        this.myDomain = this.urlDomain(me);
+        this.myHost = this.urlDomain(me);
     }
-    root() { return this.myDomain + '/' + this.myRootPath; }
+    root() { return this.myHost + '/' + this.myRootPath; }
     feedRoot() { return this.root() + '/' + this.feedLocation; }
+    configFile() { return this.root() + '/' + this.settingsFileBasename; }
+
+    loadSettings() {
+        return this.willFetch(this.configFile()).then(
+            (res) => res.json()
+        )
+    }
+
+    saveSettings(settings) {
+        return this.willFetch(
+            this.configFile(), {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(settings, null, 2)
+        })
+
+    }
 
     getPostText(url) { return this.getText(url); }
     getText(url) {
@@ -46,6 +63,7 @@ class Ibex {
             (res) => res.text()
         )
     }
+
     deletePost(url) {
         return this.delete(url)
     }
@@ -191,7 +209,7 @@ class Ibex {
 
         a.href = url;
 
-        return a.protocol + '//' + a.hostname;
+        return a.protocol + '//' + a.hostname + (!a.port ? '' : (":" + a.port));
     }
 
     willFetch(url, pars) {
@@ -226,6 +244,13 @@ function urlflatten(s) {
 function ts(date) {
     date = date || new Date;
     return date.toISOString().replace(/:/g, '.');
+}
+
+
+class FeedLoader {
+    constructor(feeds) {
+        this.feeds = feeds;
+    }
 }
 
 export default Ibex;

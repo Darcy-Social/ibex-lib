@@ -71,7 +71,7 @@ let ibextest = {
         },
         () => {
             return ibex.willFetch(
-                ibex.myDomain + "/darcywashereyoucanremoveme.txt", {
+                ibex.root() + "/../darcywashereyoucanremoveme.txt", {
                 method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: "remove me whenever, this should not have been left here"
             }).then((r) => {
                 fail("Darcy should not be able to write the file", r.url)
@@ -80,7 +80,7 @@ let ibextest = {
         },
         () => {
             let giulio = 'https://giulio.localhost/profile/card#me';
-            let fileUrl = ibex.myDomain + "/is.darcy/";
+            let fileUrl = ibex.root();
             const { AclApi, AclParser, Permissions } = SolidAclUtils;
             const { READ } = Permissions;
 
@@ -97,7 +97,7 @@ let ibextest = {
                 });
         },
         () => {
-            let testFeed = "testdeletefeed";
+            let testFeed = "testdelete";
             let testContent = "content test post to be deleted " + new Date();
             let feedUrl = null;
             let postUrl = null;
@@ -117,8 +117,60 @@ let ibextest = {
                 .then(() => {
                     return ibex.willFetch(feedUrl)
                         .then((res) => fail("Darcy should not be able to read the feed", r.url))
-                        .catch((res) => pass())
+                        .catch((res) => pass("Feeds can be created, posted on, and deleted"))
                 })
+        },
+        () => {
+            let testkey = "test-" + new Date();
+            let testValue = Math.random();
+            let originalSettings = {};
+            return ibex.loadSettings()
+                .then((oldSettings) => {
+                    originalSettings = oldSettings;
+                    return ibex.loadSettings();
+                })
+                .then((settings) => {
+                    settings[testkey] = testValue;
+                    return ibex.saveSettings(settings);
+                })
+                .then((res) => assertGoodResponse(res))
+                .then(() => ibex.loadSettings())
+                .then((newSettings) => {
+                    assertEqual(testValue, newSettings[testkey], "the added config value was not saved");
+                    delete newSettings[testkey];
+                    return ibex.saveSettings(newSettings);
+                })
+                .then((res) => {
+                    assertGoodResponse(res, "sembra aver salvato");
+                    return ibex.loadSettings()
+                })
+                .then((finalSettings) => assertEqual(originalSettings, finalSettings))
+                .catch((res) => {
+                    fail("we failed to update settings, check the console");
+                    console.log(res);
+                })
+                .finally(() => ibex.saveSettings(originalSettings))
+        },
+        () => {
+            // load feed
+            let testFeed = "testload";
+            let testContent = "content test post to be deleted " + new Date();
+            let feedUrl = null;
+            let postUrl = null;
+
+
+            // return ibex.createFeed(testFeed)
+            //     .then((res) => {
+            //         feedUrl = res.url;
+            //     })
+            //     .then(() => ibex.loadFeed(feedUrl))
+            //     .then(() => {
+            //         assertEqual([], [])
+
+            //     })
+
+
+
         }
     ]
 };
@@ -138,13 +190,13 @@ function assertTrue(a, ...banner) {
     (!!a) ? pass() : fail(...banner, '[', a, '] should have been true-ish');
     return !!a;
 }
-function assertEqual(a, a1, ...banner) {
+function assertEqual(expected, result, ...banner) {
     banner = banner || '';
-    let equal = a === a1;
+    let equal = JSON.stringify(expected) === JSON.stringify(result);
     if (equal) {
         pass();
     } else {
-        fail(banner, "Expected [", a1, ']', "should have been", '[', a, ']');
+        fail(banner, "[", result, ']', "should have been", '[', expected, ']');
     }
     return equal;
 
