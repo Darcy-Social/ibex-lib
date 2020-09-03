@@ -1,4 +1,4 @@
-import { Ibex, log } from "../ibex.js";
+import { Ibex, log, FeedLoader } from "../ibex.js";
 
 const FOAF = $rdf.Namespace('http://xmlns.com/foaf/0.1/');
 
@@ -158,16 +158,40 @@ let ibextest = {
             let feedUrl = null;
             let postUrl = null;
 
+            let l = null;
 
-            // return ibex.createFeed(testFeed)
-            //     .then((res) => {
-            //         feedUrl = res.url;
-            //     })
-            //     .then(() => ibex.loadFeed(feedUrl))
-            //     .then(() => {
-            //         assertEqual([], [])
+            let expectedPosts = [];
 
-            //     })
+
+            return ibex.createFeed(testFeed)
+                .then((res) => {
+                    feedUrl = res.url;
+                    l = new FeedLoader(feedUrl);
+                })
+                .then(() => l.loadFeed())
+                .then(() => {
+                    assertEqual(l.posts(), []);
+                    return ibex.createPost("test", testFeed)
+                        .then((res) => {
+                            expectedPosts.push(res.url);
+                            return l.loadFeed()
+                        })
+                })
+                .then(() => {
+                    assertEqual(expectedPosts, l.posts());
+                    return ibex.createPost("test2", testFeed)
+                        .then((res) => {
+                            expectedPosts.push(res.url);
+                            return l.loadFeed()
+                        })
+                })
+                .then((posts) => {
+                    console.log(l.posts())
+                    assertEqual(expectedPosts, l.posts());
+                })
+                .finally(() => {
+                    return ibex.deleteRecursive(feedUrl)
+                });
 
 
 

@@ -149,22 +149,21 @@ class Ibex {
             })
         })
     }
-
-    createPost(content, feed, slug, nocomment) {
+    createPost(content, feed, slug, nocomment, dateOfPosting) {
         if (!content) { return Promise.reject("Missing content, won't publish") }
         feed = feed || this.defaultFeed;
         nocomment = nocomment || false;
 
-        let now = new Date();
+        dateOfPosting = dateOfPosting || new Date();
 
-        slug = urlflatten(slug || ts(now));
+        slug = urlflatten(slug || ts(dateOfPosting));
 
         let path = [
             this.feedRoot(),
             feed,
-            ("" + now.getFullYear()).padStart(4, '0'),
-            ("" + (1 + now.getMonth())).padStart(2, '0'),
-            ("" + now.getDate()).padStart(2, '0')
+            ("" + dateOfPosting.getFullYear()).padStart(4, '0'),
+            ("" + (1 + dateOfPosting.getMonth())).padStart(2, '0'),
+            ("" + dateOfPosting.getDate()).padStart(2, '0')
         ].join('/');
 
         let uri = path + "/" + slug + ".md";
@@ -178,6 +177,10 @@ class Ibex {
                     body: content
                 })
             )
+    }
+
+    loadFeed() {
+        return new FeedLoader();
     }
 
     /**
@@ -247,11 +250,95 @@ function ts(date) {
 }
 
 
+
 class FeedLoader {
-    constructor(feeds) {
-        this.feeds = feeds;
+    url = null;
+    myPosts = [];
+    notBefore = null;
+    notAfter = null;
+    constructor(url) {
+        this.url = url;
+    }
+    posts() {
+        return this.myPosts
+    }
+    // async loadFeed(postCount = 10) {
+
+    //     let posts = [];
+
+    //     let folderLister = async function (path) {
+
+    //         const store = $rdf.graph();
+    //         const fetcher = new $rdf.Fetcher(store);
+
+    //         return fetcher.load(this.url).then(() => {
+
+    //             var folderItems = store.each(
+    //                 folder,
+    //                 LDP("contains"),
+    //                 null
+    //             );
+
+    //             while (aFile = folderItems.unshift()) {
+    //                 if (store.holds(aFile, RDF('type'), LDP('BasicContainer'))) {
+    //                     // delve deeper
+    //                     let subs = await folderLister(aFile);
+    //                     posts.push(...subs);
+    //                     if (posts.length >= postCount) { return }
+    //                 } else {
+    //                     posts.push(aFile);
+    //                 }
+
+    //             }
+
+    //             return
+
+    //         })
+
+    //     }
+
+    //     return folderLister(this.url);
+
+    // }
+
+    async loadFeed(postCount = 10) {
+
+        let posts = [];
+        let count = 0;
+
+        let folderLister = async function (path) {
+
+            const store = $rdf.graph();
+            const fetcher = new $rdf.Fetcher(store);
+
+            await fetcher.load(path);
+
+
+            var folderItems = store.each(
+                path,
+                LDP("contains"),
+                null
+            );
+            let aFile = null;
+
+            while (aFile = folderItems.shift()) {
+
+                if (store.holds(aFile, RDF('type'), LDP('BasicContainer'))) {
+                    // delve deeper
+                    //log("directory", aFile.uri)
+
+                    await folderLister(aFile);
+                    if (posts.length >= postCount) { return }
+                } else {
+                    //log("found", aFile.uri)
+                    posts.push(aFile.uri);
+                }
+            }
+        }
+        await folderLister($rdf.sym(this.url));
+        this.myPosts = posts;
     }
 }
 
 export default Ibex;
-export { log, Ibex };
+export { log, Ibex, FeedLoader };
