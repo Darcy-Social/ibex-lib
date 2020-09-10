@@ -146,7 +146,7 @@ class Ibex {
 
                 return Promise.all(promises)
                     .then(() => {
-                        if (!onlyFiles) { console.log("deleting directory" + folder.uri); fetcher.webOperation('DELETE', folder.uri) }
+                        if (!onlyFiles) { console.log("deleting directory " + folder.uri); fetcher.webOperation('DELETE', folder.uri) }
                     })
                     .then(res => { resolve() })
             })
@@ -356,6 +356,20 @@ class LoaderCursor {
     }
     next() { return this.loadOlderPosts ? this.folderItems.pop() : this.folderItems.shift() }
     isDirectory(path) { return this.store.holds(path, RDF('type'), LDP('BasicContainer')) }
+
+}
+
+
+class FeedAggregator {
+    /**
+     * as the aggregator controls the feed loaders,
+     * it knows their lenghts before and after the loads,
+     * so it can automatically adjust the offset of the last accessed element
+     * 
+     * 
+     * maybe it should be implemented as a composite cursor
+     * each element a cursor on its specific feed
+     */
 
 }
 

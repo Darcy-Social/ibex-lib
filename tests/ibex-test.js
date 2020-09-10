@@ -32,12 +32,28 @@ let ibextest = {
         log("running test", testnum);
         setTimeout(
             () => {
-                let result = this.tests[testnum]();
-                if (typeof result === 'object' && typeof result.then === 'function') {
-                    result.finally(() => { this.runtest(testnum + 1) })
-                    return;
+                try {
+                    let result = this.tests[testnum]();
+                    if (typeof result === 'object' && typeof result.then === 'function') {
+                        result
+                            .catch((e) => {
+                                crash("TEST " + testnum + " CRASHED", e);
+                                console.log("TEST " + testnum + " CRASHED");
+                                console.log(e)
+                            })
+                            .finally(() => { this.runtest(testnum + 1) })
+                        return;
+                    }
                 }
+                catch (e) {
+                    crash("TEST " + testnum + " CRASHED", e);
+                    console.log("TEST " + testnum + " CRASHED");
+                    console.log(e)
+                }
+
                 this.runtest(testnum + 1)
+
+
             },
             0
         );
@@ -59,16 +75,24 @@ let ibextest = {
             return ibex.createPost(content).then(
                 res => ibex.willFetch(res.url)
             ).then((res) => {
+                for (const [key, value] of res.headers.entries()) {
+                    console.log(`${key}: ${value}`);
+                }
+
+                console.log(res);
+                console.log("we got here")
+                log("we got here")
                 assertGoodResponse(res, "the post should have been posted");
                 res.text().then((t) => assertEqual(content, t, "the body of the post should be what we posted"))
                 ibex.getPostText(res.url).then((t) => assertEqual(content, t, "the body of the post should be what we posted"))
-                return ibex.deletePost(res.url);
+                return ibex.deletePost(res.url)
+                    .catch((res) => {
+                        assertEqual(res.status, 404, "Post should have been deleted, but is somehow still there");
+                        return res;
+                    })
             }).then((res) => {
                 assertGoodResponse(res, "I can't delete the post I just posted");
                 return ibex.willFetch(res.url)
-            }).catch((res) => {
-                assertEqual(res.status, 404, "Post should have been deleted, but is somehow still there");
-                return res;
             })
         },
         () => {
@@ -158,16 +182,17 @@ let ibextest = {
             let testFeed = "testload";
             let testContent = () => { return "content test post to be deleted " + new Date(); }
             let feedUrl = null;
+            let loader = null;
 
             let expectedPosts = [];
 
             return ibex.createFeed(testFeed)
                 .then((res) => {
                     feedUrl = res.url;
-                    let l = new FeedLoader(feedUrl);
-                    return l.load()
+                    loader = new FeedLoader(feedUrl);
+                    return loader.load()
                 })
-                .then((loader) => {
+                .then((posts) => {
                     assertEqual(loader.posts(), []);
                     return ibex.createPost(testContent(), testFeed)
                         .then((res) => {
@@ -175,7 +200,8 @@ let ibextest = {
                             return loader.load()
                         })
                 })
-                .then((loader) => {
+                .then((posts) => {
+                    assertEqual(loader.posts(), posts)
                     assertEqual(expectedPosts, loader.posts());
                     return ibex.createPost(testContent(), testFeed)
                         .then((res) => {
@@ -183,8 +209,8 @@ let ibextest = {
                             return loader.load()
                         })
                 })
-                .then((loader) => {
-                    assertEqual(expectedPosts, loader.posts());
+                .then((posts) => {
+                    assertEqual(expectedPosts, posts);
                 })
                 .finally(() => {
                     return ibex.deleteRecursive(feedUrl)
@@ -300,6 +326,11 @@ function pass(...data) {
 function fail(...data) {
     $('#logchecks').append('❌');
     log("❌", ...data);
+}
+function crash(...data) {
+    $('#logchecks').append('💥');
+    log("💥", ...data);
+
 }
 
 export default ibextest;
