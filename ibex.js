@@ -121,6 +121,7 @@ class Ibex {
     }
 
     deleteRecursive(folder, onlyFiles = false) {
+        console.log("deleting " + folder)
         return this._deleteRecursive($rdf.sym(folder), onlyFiles)
     }
 
@@ -146,7 +147,10 @@ class Ibex {
 
                 return Promise.all(promises)
                     .then(() => {
-                        if (!onlyFiles) { console.log("deleting directory " + folder.uri); fetcher.webOperation('DELETE', folder.uri) }
+                        if (!onlyFiles) {
+                            console.log("deleting directory " + folder.uri);
+                            return fetcher.webOperation('DELETE', folder.uri)
+                        }
                     })
                     .then(res => { resolve() })
             })
