@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <title>IBEX</title>
-  <link rel="stylesheet" href="styles/main.css">
+  <!-- <link rel="stylesheet" href="styles/main.css"> -->
 </head>
 <style>
   .post {
@@ -14,7 +14,10 @@
 </style>
 
 <body>
-  <h1>IBEX 🐐<span id="origin"></span></h1>
+  <h1 id="spinner" style="float: right;">🐐</h1>
+  <h1>IBEX <span id="origin"></span></h1>
+
+
   <p id="login">
     You are not logged in.
     <button id="loginbutton">log in</button>
@@ -75,7 +78,10 @@
           // Use the user's WebID as default profile
           if (!$('#profile').val()) {
             $('#profile').val(session.webId);
+            ibextest.run();
           }
+
+
         }
         updateUI();
 

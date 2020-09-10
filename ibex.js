@@ -27,6 +27,7 @@ var log = (...data) => {
 }
 
 class Ibex {
+    fetchCount = 0;
     me = null;
     myHost = null;
     myRootPath = 'is.darcy';
@@ -119,11 +120,11 @@ class Ibex {
                 }))
     }
 
-    deleteRecursive(folder) {
-        return this._deleteRecursive($rdf.sym(folder))
+    deleteRecursive(folder, onlyFiles = false) {
+        return this._deleteRecursive($rdf.sym(folder), onlyFiles)
     }
 
-    _deleteRecursive(folder) {
+    _deleteRecursive(folder, onlyFiles = false) {
         if (!folder.uri.startsWith(this.root())) {
             return Promise.reject("Invalid path: can't delete " + folder.uri)
         }
@@ -137,18 +138,21 @@ class Ibex {
 
                 let promises = store.each(folder, LDP('contains'), null).map(file => {
                     if (store.holds(file, RDF('type'), LDP('BasicContainer'))) {
-                        return this._deleteRecursive(file)
+                        return this._deleteRecursive(file, onlyFiles)
                     } else {
                         return fetcher.webOperation('DELETE', file.uri)
                     }
                 });
 
                 return Promise.all(promises)
-                    .then(() => fetcher.webOperation('DELETE', folder.uri))
+                    .then(() => {
+                        if (!onlyFiles) { console.log("deleting directory" + folder.uri); fetcher.webOperation('DELETE', folder.uri) }
+                    })
                     .then(res => { resolve() })
             })
         })
     }
+
     createPost(content, feed, slug, nocomment, dateOfPosting) {
         if (!content) { return Promise.reject("Missing content, won't publish") }
         feed = feed || this.defaultFeed;
@@ -161,9 +165,7 @@ class Ibex {
         let path = [
             this.feedRoot(),
             feed,
-            ("" + dateOfPosting.getFullYear()).padStart(4, '0'),
-            ("" + (1 + dateOfPosting.getMonth())).padStart(2, '0'),
-            ("" + dateOfPosting.getDate()).padStart(2, '0')
+            cdnPathFromDate(dateOfPosting)
         ].join('/');
 
         let uri = path + "/" + slug + ".md";
@@ -216,6 +218,7 @@ class Ibex {
     }
 
     willFetch(url, pars) {
+        this.fetchCount++;
         pars = pars || {};
         pars.method = pars.method || 'GET';
 
@@ -248,96 +251,112 @@ function ts(date) {
     date = date || new Date;
     return date.toISOString().replace(/:/g, '.');
 }
+function cdnPathFromDate(aDate = new Date()) {
+    return [
+        ("" + aDate.getFullYear()).padStart(4, '0'),
+        ("" + (1 + aDate.getMonth())).padStart(2, '0'),
+        ("" + aDate.getDate()).padStart(2, '0')
+    ].join('/');
+}
 
 
 
 class FeedLoader {
     url = null;
+    dateOrigin = null;
     myPosts = [];
-    notBefore = null;
-    notAfter = null;
-    constructor(url) {
-        this.url = url;
+    loading = null;
+    constructor(feedUrl, dateOrigin = new Date()) {
+        this.url = feedUrl;
+        this.dateOrigin = dateOrigin;
     }
-    posts() {
-        return this.myPosts
+    posts() { return this.myPosts }
+    first() { return this.myPosts[0]; }
+    last() { return this.myPosts[this.myPosts.length - 1]; }
+
+    async loadOlder(postsToList = 10) {
+        return await this.load(postsToList, true);
     }
-    // async loadFeed(postCount = 10) {
+    async loadNewer(postsToList = 10) {
+        return await this.load(postsToList, false);
+    }
+    isLoading() { return this.loading; }
 
-    //     let posts = [];
+    async load(postsToList = 10, loadOlderPosts = true) {
+        if (this.loading) { throw "Loader is busy loading " + this.url; }
+        this.loading = true;
+        let that = this;
 
-    //     let folderLister = async function (path) {
+        try {
+            let folderLister = async function (path) {
 
-    //         const store = $rdf.graph();
-    //         const fetcher = new $rdf.Fetcher(store);
+                let loaderCursor = new LoaderCursor(loadOlderPosts);
+                await loaderCursor.load(path);
 
-    //         return fetcher.load(this.url).then(() => {
+                let aFile = null;
 
-    //             var folderItems = store.each(
-    //                 folder,
-    //                 LDP("contains"),
-    //                 null
-    //             );
-
-    //             while (aFile = folderItems.unshift()) {
-    //                 if (store.holds(aFile, RDF('type'), LDP('BasicContainer'))) {
-    //                     // delve deeper
-    //                     let subs = await folderLister(aFile);
-    //                     posts.push(...subs);
-    //                     if (posts.length >= postCount) { return }
-    //                 } else {
-    //                     posts.push(aFile);
-    //                 }
-
-    //             }
-
-    //             return
-
-    //         })
-
-    //     }
-
-    //     return folderLister(this.url);
-
-    // }
-
-    async loadFeed(postCount = 10) {
-
-        let posts = [];
-        let count = 0;
-
-        let folderLister = async function (path) {
-
-            const store = $rdf.graph();
-            const fetcher = new $rdf.Fetcher(store);
-
-            await fetcher.load(path);
+                while (
+                    (aFile = loaderCursor.next())
+                    &&
+                    (postsToList)
+                ) {
 
 
-            var folderItems = store.each(
-                path,
-                LDP("contains"),
-                null
-            );
-            let aFile = null;
+                    if (loadOlderPosts && aFile.uri >= that.first()) {
+                        //log("skipping newer when looking for older", aFile.uri)
+                        continue;
+                    }
+                    if (!loadOlderPosts && aFile.uri <= that.last()) {
+                        if (!(loaderCursor.isDirectory(aFile) && !that.last().startsWith(aFile))) {
+                            //log("skipping older when looking for newer", aFile.uri)
+                            continue;
+                        }
+                        //log("almost skipped", aFile.uri)
 
-            while (aFile = folderItems.shift()) {
+                    }
 
-                if (store.holds(aFile, RDF('type'), LDP('BasicContainer'))) {
-                    // delve deeper
-                    //log("directory", aFile.uri)
+                    if (loaderCursor.isDirectory(aFile)) {
+                        // delve deeper
+                        try {
+                            await folderLister(aFile);
+                        } catch { }
+                    } else {
+                        postsToList--;
 
-                    await folderLister(aFile);
-                    if (posts.length >= postCount) { return }
-                } else {
-                    //log("found", aFile.uri)
-                    posts.push(aFile.uri);
+                        if (aFile.uri < that.first()) {
+                            that.myPosts.unshift(aFile.uri);
+                        } else {
+                            that.myPosts.push(aFile.uri);
+                        }
+                        //log("added", aFile.uri)
+                    }
                 }
             }
+
+            await folderLister($rdf.sym(this.url));
+
         }
-        await folderLister($rdf.sym(this.url));
-        this.myPosts = posts;
+        finally {
+            this.loading = false;
+        }
+
+        return this.myPosts;
     }
+}
+
+class LoaderCursor {
+    constructor(loadOlderPosts = true) {
+        this.loadOlderPosts = loadOlderPosts;
+        this.store = $rdf.graph();
+        this.fetcher = new $rdf.Fetcher(this.store);
+    }
+    async load(path) {
+        await this.fetcher.load(path);
+        this.folderItems = this.store.each(path, LDP("contains"), null);
+    }
+    next() { return this.loadOlderPosts ? this.folderItems.pop() : this.folderItems.shift() }
+    isDirectory(path) { return this.store.holds(path, RDF('type'), LDP('BasicContainer')) }
+
 }
 
 export default Ibex;
