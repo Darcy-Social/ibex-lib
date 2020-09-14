@@ -12,58 +12,6 @@ let ibextest = {
 
     testIndex: 0,
 
-    run() {
-        ibex = new Ibex($('#user').text());
-
-        setInterval(() => { $("#spinner").css("transform", "rotate(" + (ibex.fetchCount * 10) + "deg)") }, 200)
-
-        aclApi = new AclApi(solid.auth.fetch.bind(solid.auth), { autoSave: true })
-
-        this.testIndex = 0;
-        this.runtest();
-
-    },
-
-    runtest(testnum = 0) {
-        if (testnum >= this.tests.length) {
-            log("all tests started, some promises might be lagging behind");
-            return
-        }
-        log("running test", testnum);
-        setTimeout(
-            () => {
-                try {
-                    let result = this.tests[testnum]();
-                    if (typeof result === 'object' && typeof result.then === 'function') {
-                        result
-                            .catch((e) => {
-                                crash("TEST " + testnum + " CRASHED (promise broken)", e);
-                                if (e.stack) { log("stack", stacktrace(e)) }
-                                console.log("TEST " + testnum + " CRASHED");
-                                console.log(e)
-
-                            })
-                            .finally(() => { this.runtest(testnum + 1) })
-                        return;
-                    }
-                }
-                catch (e) {
-                    crash("TEST " + testnum + " CRASHED (exception)", e);
-                    if (e.stack) { log("stack", stacktrace(e)) }
-                    console.log("TEST " + testnum + " CRASHED");
-                    console.log(e.stack)
-                }
-
-                this.runtest(testnum + 1)
-
-
-            },
-            0
-        );
-
-    },
-
-
     tests: [
         () => {
             return ibex
@@ -230,7 +178,6 @@ let ibextest = {
                     feedUrl = res.url;
 
                     let timeCursor = new Date();
-                    let originalDate = new Date(timeCursor);
                     let dT = 8000 * 1000;
                     log("creating a batch of posts, this will take a while...");
 
@@ -270,6 +217,7 @@ let ibextest = {
                                                 .then((allLoadedPosts) => {
                                                     createdPosts.push(newerPost.url);
                                                     assertEqual(createdPosts, allLoadedPosts);
+                                                    log(allLoadedPosts);
 
                                                 })
                                         })
@@ -290,11 +238,57 @@ let ibextest = {
 
 
         },
-        () => {
-            let feeds = 0;
+    ],
+    run() {
+        ibex = new Ibex($('#user').text());
 
+        setInterval(() => { $("#spinner").css("transform", "rotate(" + (ibex.fetchCount * 10) + "deg)") }, 200)
+
+        aclApi = new AclApi(solid.auth.fetch.bind(solid.auth), { autoSave: true })
+
+        this.testIndex = 0;
+        this.runtest();
+
+    },
+
+    runtest(testnum = 0) {
+        if (testnum >= this.tests.length) {
+            log("all tests started, some promises might be lagging behind");
+            return
         }
-    ]
+        log("running test", testnum);
+        setTimeout(
+            () => {
+                try {
+                    let result = this.tests[testnum]();
+                    if (typeof result === 'object' && typeof result.then === 'function') {
+                        result
+                            .catch((e) => {
+                                crash("TEST " + testnum + " CRASHED (promise broken)", e);
+                                if (e.stack) { log("stack", stacktrace(e)) }
+                                console.log("TEST " + testnum + " CRASHED");
+                                console.log(e)
+
+                            })
+                            .finally(() => { this.runtest(testnum + 1) })
+                        return;
+                    }
+                }
+                catch (e) {
+                    crash("TEST " + testnum + " CRASHED (exception)", e);
+                    if (e.stack) { log("stack", stacktrace(e)) }
+                    console.log("TEST " + testnum + " CRASHED");
+                    console.log(e.stack)
+                }
+
+                this.runtest(testnum + 1)
+
+
+            },
+            0
+        );
+
+    },
 };
 function assertGoodResponse(response, ...banner) {
     banner = banner || '';
@@ -331,7 +325,8 @@ function pass(...data) {
 function fail(...data) {
     $('#logchecks').append('❌');
     log("❌", ...data);
-    log(stacktrace());
+    let trace = stacktrace();
+    if (trace.length > 0) { log(trace) }
 }
 function crash(...data) {
     $('#logchecks').append('💥');

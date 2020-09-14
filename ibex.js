@@ -266,17 +266,18 @@ function cdnPathFromDate(aDate = new Date()) {
 
 
 class FeedLoader {
-    url = null;
-    dateOrigin = null;
+    myUrl = null;
+    urlOrigin = null;
     myPosts = [];
     loading = null;
     constructor(feedUrl, dateOrigin = new Date()) {
-        this.url = feedUrl;
-        this.dateOrigin = dateOrigin;
+        this.myUrl = feedUrl;
+        this.urlOrigin = feedUrl + cdnPathFromDate(dateOrigin) + '/zzzzzzzzzzzzzzzz';
     }
+    url() { return this.myUrl; }
     posts() { return this.myPosts }
-    first() { return this.myPosts[0]; }
-    last() { return this.myPosts[this.myPosts.length - 1]; }
+    first() { return this.myPosts[0] || this.urlOrigin; }
+    last() { return this.myPosts[this.myPosts.length - 1] || this.urlOrigin; }
 
     async loadOlder(postsToList = 10) {
         return await this.load(postsToList, true);
@@ -287,7 +288,7 @@ class FeedLoader {
     isLoading() { return this.loading; }
 
     async load(postsToList = 10, loadOlderPosts = true) {
-        if (this.loading) { throw "Loader is busy loading " + this.url; }
+        if (this.loading) { throw "Loader is busy loading " + this.url(); }
         this.loading = true;
         let that = this;
 
@@ -304,19 +305,16 @@ class FeedLoader {
                     &&
                     (postsToList)
                 ) {
-
-
                     if (loadOlderPosts && aFile.uri >= that.first()) {
-                        //log("skipping newer when looking for older", aFile.uri)
+                        //log("skipping newer when looking for older:", aFile.uri, '>', that.first())
                         continue;
                     }
                     if (!loadOlderPosts && aFile.uri <= that.last()) {
                         if (!(loaderCursor.isDirectory(aFile) && !that.last().startsWith(aFile))) {
-                            //log("skipping older when looking for newer", aFile.uri)
+                            //log("skipping older when looking for newer: ", aFile.uri, '<', that.last())
                             continue;
                         }
                         //log("almost skipped", aFile.uri)
-
                     }
 
                     if (loaderCursor.isDirectory(aFile)) {
@@ -336,14 +334,11 @@ class FeedLoader {
                     }
                 }
             }
-
-            await folderLister($rdf.sym(this.url));
-
+            await folderLister($rdf.sym(this.url()));
         }
         finally {
             this.loading = false;
         }
-
         return this.myPosts;
     }
 }
@@ -363,16 +358,91 @@ class LoaderCursor {
 
 }
 
-class Feed {
+class FeedStreamer {
     constructor(url, dateStarting = new Date()) {
-        this.url = url;
-        this.dateStarting = dateStarting;
         this.loader = new FeedLoader(url, dateStarting);
+
+        this.olderId = -1;
+        this.newerId = -1;
+    }
+    url() { return this.loader.url() }
+    isLoading() { return this.loader.isLoading() }
+
+    async _load(postsToList = 10, loadOlderPosts = true) {
+        if (loadOlderPosts && this.reachedFirstPost) { return [] }
+        let loadedPosts = []
+
+        try {
+            loadedPosts = await this.loader.load(postsToList, loadOlderPosts);
+            log(loadedPosts.length, "posts loaded from", this.url)
+        } catch {
+            console.log("problems loading " + this.url);
+            return []
+        }
+
+        if (loadOlderPosts) {
+            //repoint
+            if (loadedPosts.length) {
+                this.olderId += loadedPosts.length;
+                this.newerId += loadedPosts.length;
+            } else {
+                //loaded successfully 0 older posts? we reached the end of the feed.
+                this.reachedFirstPost = true;
+            }
+        }
+
+        //if this is needed it should go here, and we need to set up olderUrl and newerUrl
+        // if (this.loader.posts()[this.olderId] != this.olderUrl) {
+        //     //adapt
+        // }
+        // if (this.loader.posts()[this.newerId] != this.newerUrl) {
+        //     //adapt
+        // }
+
+        console.log("needs to check for index amends, maybe?")
+        return posts;
+    }
+    async getOlderPostUrl() {
+
+        if (this.olderId == -1) { // not yet loaded
+            let posts = await this._load(1, true);
+            if (!posts.length) { return null }
+        }
+
+        if (this.olderId < 3) {
+            this._load(10, true); // yeah do not wait
+        }
+
+        return this.loader.posts[this.olderId--];
+
+    }
+
+
+    async getNewerPostUrl() {
+        if (this.newerId == -1) { // not yet loaded
+            let posts = await this._load(1, false);
+            if (!posts.length) { return null }
+        }
+
+        let loadedCount = this.loader.posts().length;
+        if (this.newerId + 4 > loadedCount) {
+            this._load(10, false); // yeah do not wait
+        }
+        if (this.newerId + 1 < loadedCount) {
+            return this.loader.posts()[++this.newerId];
+        }
+        return []
+
     }
 }
 
 
 class FeedAggregator {
+    posts = [];
+    dateStarting = null;
+    loaders = [];
+    from = null;
+    to = null;
     /**
      * as the aggregator controls the feed loaders,
      * it knows their lenghts before and after the loads,
@@ -382,6 +452,24 @@ class FeedAggregator {
      * maybe it should be implemented as a composite cursor
      * each element a cursor on its specific feed
      */
+    constructor(urls, dateStarting = new Date()) {
+        this.posts = [];
+        this.dateStarting = dateStarting;
+        this.loaders = urls.map((url) => new FeedLoader(url, dateStarting));
+    }
+    async loadOlder(count = 10) {
+        return await this.loader.loadOlder(count);
+
+
+
+
+
+
+
+    }
+    posts() {
+        return this.posts;
+    }
 
 }
 
