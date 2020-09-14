@@ -363,6 +363,14 @@ class LoaderCursor {
 
 }
 
+class Feed {
+    constructor(url, dateStarting = new Date()) {
+        this.url = url;
+        this.dateStarting = dateStarting;
+        this.loader = new FeedLoader(url, dateStarting);
+    }
+}
+
 
 class FeedAggregator {
     /**

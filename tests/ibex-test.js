@@ -37,18 +37,21 @@ let ibextest = {
                     if (typeof result === 'object' && typeof result.then === 'function') {
                         result
                             .catch((e) => {
-                                crash("TEST " + testnum + " CRASHED", e);
+                                crash("TEST " + testnum + " CRASHED (promise broken)", e);
+                                if (e.stack) { log("stack", stacktrace(e)) }
                                 console.log("TEST " + testnum + " CRASHED");
                                 console.log(e)
+
                             })
                             .finally(() => { this.runtest(testnum + 1) })
                         return;
                     }
                 }
                 catch (e) {
-                    crash("TEST " + testnum + " CRASHED", e);
+                    crash("TEST " + testnum + " CRASHED (exception)", e);
+                    if (e.stack) { log("stack", stacktrace(e)) }
                     console.log("TEST " + testnum + " CRASHED");
-                    console.log(e)
+                    console.log(e.stack)
                 }
 
                 this.runtest(testnum + 1)
@@ -59,6 +62,7 @@ let ibextest = {
         );
 
     },
+
 
     tests: [
         () => {
@@ -75,24 +79,21 @@ let ibextest = {
             return ibex.createPost(content).then(
                 res => ibex.willFetch(res.url)
             ).then((res) => {
-                for (const [key, value] of res.headers.entries()) {
-                    console.log(`${key}: ${value}`);
-                }
 
-                console.log(res);
-                console.log("we got here")
-                log("we got here")
                 assertGoodResponse(res, "the post should have been posted");
                 res.text().then((t) => assertEqual(content, t, "the body of the post should be what we posted"))
-                ibex.getPostText(res.url).then((t) => assertEqual(content, t, "the body of the post should be what we posted"))
-                return ibex.deletePost(res.url)
-                    .catch((res) => {
-                        assertEqual(res.status, 404, "Post should have been deleted, but is somehow still there");
-                        return res;
+                return ibex.getPostText(res.url)
+                    .then((t) => assertEqual(content, t, "the body of the post should be what we posted"))
+                    .then(() => {
+                        return ibex.deletePost(res.url)
+                            .then(() => ibex.getPostText(res.url))
+                            .catch((res) => {
+                                assertEqual(res.status, 404, "Post should have been deleted, but is somehow still there");
+                                return res;
+                            })
                     })
-            }).then((res) => {
-                assertGoodResponse(res, "I can't delete the post I just posted");
-                return ibex.willFetch(res.url)
+
+
             })
         },
         () => {
@@ -206,7 +207,7 @@ let ibextest = {
                     return ibex.createPost(testContent(), testFeed)
                         .then((res) => {
                             expectedPosts.push(res.url);
-                            return loader.load()
+                            return loader.loadNewer()
                         })
                 })
                 .then((posts) => {
@@ -288,6 +289,10 @@ let ibextest = {
                 });
 
 
+        },
+        () => {
+            let feeds = 0;
+
         }
     ]
 };
@@ -326,11 +331,16 @@ function pass(...data) {
 function fail(...data) {
     $('#logchecks').append('❌');
     log("❌", ...data);
+    log(stacktrace());
 }
 function crash(...data) {
     $('#logchecks').append('💥');
     log("💥", ...data);
 
 }
+function stacktrace(e) {
+    return (e || Error()).stack.split(/\n +/g).filter((r) => { return !r.startsWith("at assertEqual (") && r.startsWith("at assertTrue (") && !r.startsWith("at stacktrace (") && !r.startsWith("at fail (") && r != "Error" });
+}
+
 
 export default ibextest;
