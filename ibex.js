@@ -400,7 +400,7 @@ class FeedStreamer {
         // }
 
         console.log("needs to check for index amends, maybe?")
-        return posts;
+        return loadedPosts;
     }
     async getOlderPostUrl() {
 

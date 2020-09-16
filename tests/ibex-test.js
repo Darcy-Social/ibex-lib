@@ -181,20 +181,19 @@ let ibextest = {
                     let dT = 8000 * 1000;
                     log("creating a batch of posts, this will take a while...");
 
-                    let createposts = (count) => {
+                    let createposts = (count, feedName) => {
                         return ibex
-                            .createPost(testContent(), testFeed, null, null, new Date(timeCursor))
+                            .createPost(testContent(), feedName, null, null, new Date(timeCursor))
                             .then((res) => {
                                 createdPosts.unshift(res.url);
 
                                 count--;
                                 timeCursor.setTime(timeCursor.getTime() - dT);
-                                if (count) { return createposts(count); }
+                                if (count) { return createposts(count, feedName); }
                             })
-
                     }
 
-                    return createposts(postCount)
+                    return createposts(postCount, testFeed)
                         .then(() => {
                             log("done creating batch of posts");
                             let loader = new FeedLoader(feedUrl);
@@ -217,19 +216,11 @@ let ibextest = {
                                                 .then((allLoadedPosts) => {
                                                     createdPosts.push(newerPost.url);
                                                     assertEqual(createdPosts, allLoadedPosts);
-                                                    log(allLoadedPosts);
-
+                                                    // log(allLoadedPosts);
                                                 })
                                         })
-
                                 })
-
-
-
-
-
                         })
-
                 })
 
                 .finally(() => {
@@ -240,6 +231,8 @@ let ibextest = {
         },
     ],
     run() {
+        $("#run").prop('disabled', true);
+        $('#run').text("running")
         ibex = new Ibex($('#user').text());
 
         setInterval(() => { $("#spinner").css("transform", "rotate(" + (ibex.fetchCount * 10) + "deg)") }, 200)
@@ -254,6 +247,8 @@ let ibextest = {
     runtest(testnum = 0) {
         if (testnum >= this.tests.length) {
             log("all tests started, some promises might be lagging behind");
+            $("#run").prop('disabled', false);
+            $('#run').text("run")
             return
         }
         log("running test", testnum);
@@ -282,7 +277,6 @@ let ibextest = {
                 }
 
                 this.runtest(testnum + 1)
-
 
             },
             0
