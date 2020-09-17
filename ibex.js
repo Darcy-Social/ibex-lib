@@ -185,8 +185,23 @@ class Ibex {
             )
     }
 
-    loadFeed() {
-        return new FeedLoader();
+    listFriends(webid) {
+        /**
+         * grabs the webids this person has as so-called friends
+         * might be worth to cache the result
+         *
+         * @param {String} webid
+         *
+         * example: listFriends("https://gaia.solid.community/profile/card#me").then(console.log);
+         */
+        const store = $rdf.graph();
+        const fetcher = new $rdf.Fetcher(store);
+
+        return fetcher.load(webid).then(
+            () => {
+                return store.each($rdf.sym(webid), FOAF('knows'))
+            }
+        );
     }
 
     /**
@@ -245,6 +260,8 @@ class Ibex {
     }
 
 }
+
+
 
 function urlflatten(s) {
     return encodeURIComponent(s);

@@ -92,7 +92,7 @@ let ibextest = {
                 .then(() => {
                     return ibex.willFetch(feedUrl)
                         .then((res) => fail("Darcy should not be able to read the feed", r.url))
-                        .catch((res) => pass("Feeds can be created, posted on, and deleted"))
+                        .catch((res) => pass())
                 })
         },
         () => {
