@@ -1,4 +1,4 @@
-import { Ibex, log, FeedLoader } from "../ibex.js";
+import { Ibex, log, FeedLoader, FeedStreamer } from "../ibex.js";
 
 const FOAF = $rdf.Namespace('http://xmlns.com/foaf/0.1/');
 
@@ -222,7 +222,19 @@ let ibextest = {
                                 })
                         })
                 })
+                .then(() => {
+                    let streamer = new FeedStreamer(feedUrl);
+                    log("streamer", streamer)
 
+                    return streamer.getNewerPostUrl()
+                        .then((post) => assertEqual(createdPosts[createdPosts.length - 1], post, "should load last post"))
+                        .then(() => streamer.getNewerPostUrl())
+                        .then((noPost) => assertEqual(null, noPost, "Should load no more new posts"))
+                        .then(() => streamer.getOlderPostUrl())
+                        .then((post) => assertEqual(createdPosts[createdPosts.length - 2], post, "should load second last post"))
+                        .then(() => streamer.getOlderPostUrl())
+                        .then((post) => assertEqual(createdPosts[createdPosts.length - 3], post, "should load third last post"))
+                })
                 .finally(() => {
                     return ibex.deleteRecursive(feedUrl, true)
                 });
@@ -328,7 +340,13 @@ function crash(...data) {
 
 }
 function stacktrace(e) {
-    return (e || Error()).stack.split(/\n +/g).filter((r) => { return !r.startsWith("at assertEqual (") && r.startsWith("at assertTrue (") && !r.startsWith("at stacktrace (") && !r.startsWith("at fail (") && r != "Error" });
+    return (e || Error()).stack.split(/\n +/g).filter((r) => {
+        return !r.startsWith("at assertEqual (")
+            && !r.startsWith("at assertTrue (")
+            && !r.startsWith("at stacktrace (")
+            && !r.startsWith("at fail (")
+            && r != "Error"
+    });
 }
 
 

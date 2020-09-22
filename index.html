@@ -22,7 +22,7 @@
     You are not logged in.
     <button id="loginbutton">log in</button>
   </p>
-  <div id="logout" style="visibility: none;">
+  <div id="logout" style="display: none;">
     <p> You are logged in as <span id="user"></span>.</p>
     <button id="logoutbutton">log out</button>
     <div>
@@ -80,12 +80,8 @@
             $('#profile').val(session.webId);
             ibextest.run();
           }
-
-
         }
         updateUI();
-
-
 
       });
 

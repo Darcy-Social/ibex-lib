@@ -380,75 +380,89 @@ class FeedStreamer {
         this.loader = new FeedLoader(url, dateStarting);
 
         this.olderId = -1;
-        this.newerId = -1;
+        this.newerId = 0;
     }
     url() { return this.loader.url() }
     isLoading() { return this.loader.isLoading() }
 
     async _load(postsToList = 10, loadOlderPosts = true) {
-        if (loadOlderPosts && this.reachedFirstPost) { return [] }
+        log("loading", postsToList, (loadOlderPosts ? "older" : "newer"), "posts")
+        if (loadOlderPosts && this.reachedFirstPost) {
+            log("reached end of the feed");
+            return []
+        }
+        let loadCountBeforeLoad = this.loadedCount();
         let loadedPosts = []
-
+        log("Before _load: count", this.loadedCount(), " olderId", this.olderId, "newerId", this.newerId);
         try {
             loadedPosts = await this.loader.load(postsToList, loadOlderPosts);
-            log(loadedPosts.length, "posts loaded from", this.url)
         } catch {
-            console.log("problems loading " + this.url);
+            log("problems loading " + this.url());
             return []
         }
 
         if (loadOlderPosts) {
+            let delta = this.loadedCount() - loadCountBeforeLoad;
             //repoint
-            if (loadedPosts.length) {
-                this.olderId += loadedPosts.length;
-                this.newerId += loadedPosts.length;
+            if (delta) {
+                this.olderId += delta;
+                this.newerId += delta;
             } else {
                 //loaded successfully 0 older posts? we reached the end of the feed.
                 this.reachedFirstPost = true;
             }
         }
-
-        //if this is needed it should go here, and we need to set up olderUrl and newerUrl
-        // if (this.loader.posts()[this.olderId] != this.olderUrl) {
-        //     //adapt
-        // }
-        // if (this.loader.posts()[this.newerId] != this.newerUrl) {
-        //     //adapt
-        // }
-
-        console.log("needs to check for index amends, maybe?")
+        log("After  _load: count", this.loadedCount(), " olderId", this.olderId, "newerId", this.newerId);
         return loadedPosts;
     }
-    async getOlderPostUrl() {
+    loadedCount() {
+        return this.loader.posts().length
+    }
+    async getOlderPostUrl(consume = true) {
+        log("olderID", this.olderId);
+        log("post count:", this.loadedCount())
 
-        if (this.olderId == -1) { // not yet loaded
-            let posts = await this._load(1, true);
-            if (!posts.length) { return null }
+        if (this.olderId < 3) { // not yet loaded, or finishing
+            log("not enough old loaded posts, loading older posts")
+            await this._load(5, true);
         }
+        if (!this.loadedCount()) { return null; }
 
-        if (this.olderId < 3) {
-            this._load(10, true); // yeah do not wait
-        }
+        // if (this.olderId < 3) {
+        //     this._load(10, true); // yeah do not wait, this is very probably broken, so it's disabled.
+        // }
+        log("post count:", this.loadedCount())
+        log("posts", this.loader.posts())
+        log("loading post", this.olderId)
 
-        return this.loader.posts[this.olderId--];
-
+        let result = this.loader.posts()[this.olderId];
+        if (consume) { this.olderId-- }
+        log("olderID after", this.olderId);
+        log("returning", result)
+        return result;
     }
 
-
-    async getNewerPostUrl() {
-        if (this.newerId == -1) { // not yet loaded
-            let posts = await this._load(1, false);
-            if (!posts.length) { return null }
+    async getNewerPostUrl(consume = true) {
+        log("post count:", this.loadedCount(), "newerId", this.newerId)
+        let candidate = this.loader.posts()[this.newerId];
+        if (!candidate) { // need to load
+            log("not enough new loaded posts, loading newer posts")
+            let posts = await this._load(5, false);
+            if (!posts.length) { log("no new posts"); return null }
         }
 
-        let loadedCount = this.loader.posts().length;
-        if (this.newerId + 4 > loadedCount) {
-            this._load(10, false); // yeah do not wait
+
+        // if (this.newerId + 4 > loadedCount) {
+        //     this._load(10, false); // yeah do not wait
+        // }
+        log("post count after load newer:", this.loadedCount())
+        candidate = this.loader.posts()[this.newerId];
+        if (candidate) {
+            if (consume) { this.newerId++; }
+            log("newerId after", this.newerId);
+            return candidate;
         }
-        if (this.newerId + 1 < loadedCount) {
-            return this.loader.posts()[++this.newerId];
-        }
-        return []
+        return null
 
     }
 }
@@ -491,4 +505,4 @@ class FeedAggregator {
 }
 
 export default Ibex;
-export { log, Ibex, FeedLoader };
+export { log, Ibex, FeedLoader, FeedStreamer };
