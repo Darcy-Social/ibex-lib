@@ -386,18 +386,19 @@ class FeedStreamer {
     isLoading() { return this.loader.isLoading() }
 
     async _load(postsToList = 10, loadOlderPosts = true) {
-        log("loading", postsToList, (loadOlderPosts ? "older" : "newer"), "posts")
+
+        //log("loading", postsToList, (loadOlderPosts ? "older" : "newer"), "posts")
         if (loadOlderPosts && this.reachedFirstPost) {
-            log("reached end of the feed");
+            log("reached end of the feed", this.url);
             return []
         }
         let loadCountBeforeLoad = this.loadedCount();
         let loadedPosts = []
-        log("Before _load: count", this.loadedCount(), " olderId", this.olderId, "newerId", this.newerId);
+        //log("Before _load: count", this.loadedCount(), " olderId", this.olderId, "newerId", this.newerId);
         try {
             loadedPosts = await this.loader.load(postsToList, loadOlderPosts);
         } catch {
-            log("problems loading " + this.url());
+            log("problems loading ", this.url());
             return []
         }
 
@@ -412,66 +413,64 @@ class FeedStreamer {
                 this.reachedFirstPost = true;
             }
         }
-        log("After  _load: count", this.loadedCount(), " olderId", this.olderId, "newerId", this.newerId);
+        //log("After  _load: count", this.loadedCount(), " olderId", this.olderId, "newerId", this.newerId);
         return loadedPosts;
     }
     loadedCount() {
         return this.loader.posts().length
     }
     async getOlderPostUrl(consume = true) {
-        log("olderID", this.olderId);
-        log("post count:", this.loadedCount())
+        // log("olderID", this.olderId);
+        // log("post count:", this.loadedCount())
 
         if (this.olderId < 3) { // not yet loaded, or finishing
             log("not enough old loaded posts, loading older posts")
+            console.time("load older");
             await this._load(5, true);
+            console.timeEnd("load older");
         }
         if (!this.loadedCount()) { return null; }
 
         // if (this.olderId < 3) {
         //     this._load(10, true); // yeah do not wait, this is very probably broken, so it's disabled.
         // }
-        log("post count:", this.loadedCount())
-        log("posts", this.loader.posts())
-        log("loading post", this.olderId)
 
         let result = this.loader.posts()[this.olderId];
         if (consume) { this.olderId-- }
-        log("olderID after", this.olderId);
-        log("returning", result)
         return result;
     }
 
     async getNewerPostUrl(consume = true) {
-        log("post count:", this.loadedCount(), "newerId", this.newerId)
+        // log("post count:", this.loadedCount(), "newerId", this.newerId)
         let candidate = this.loader.posts()[this.newerId];
         if (!candidate) { // need to load
             log("not enough new loaded posts, loading newer posts")
+            console.time("load newer")
             let posts = await this._load(5, false);
-            if (!posts.length) { log("no new posts"); return null }
+            console.timeEnd("load newer")
         }
-
 
         // if (this.newerId + 4 > loadedCount) {
         //     this._load(10, false); // yeah do not wait
         // }
-        log("post count after load newer:", this.loadedCount())
+
         candidate = this.loader.posts()[this.newerId];
         if (candidate) {
             if (consume) { this.newerId++; }
-            log("newerId after", this.newerId);
             return candidate;
         }
         return null
 
     }
+    async peekNewerPostUrl() { return this.getNewerPostUrl(false) }
+    async peekOlderPostUrl() { return this.getOlderPostUrl(false) }
 }
 
 
 class FeedAggregator {
     posts = [];
     dateStarting = null;
-    loaders = [];
+    streamers = [];
     from = null;
     to = null;
     /**
@@ -484,20 +483,11 @@ class FeedAggregator {
      * each element a cursor on its specific feed
      */
     constructor(urls, dateStarting = new Date()) {
-        this.posts = [];
         this.dateStarting = dateStarting;
-        this.loaders = urls.map((url) => new FeedLoader(url, dateStarting));
+        this.streamers = urls.map((url) => new FeedStreamer(url, dateStarting));
     }
-    async loadOlder(count = 10) {
-        return await this.loader.loadOlder(count);
-
-
-
-
-
-
-
-    }
+    async getNewerPostUrl() { }
+    async getOlderPostUrl() { }
     posts() {
         return this.posts;
     }

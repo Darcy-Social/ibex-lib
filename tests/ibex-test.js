@@ -173,29 +173,20 @@ let ibextest = {
             let postCount = 4;
             let postsToBeFetched = 2;
             let createdPosts = []
+
+
             return ibex.createFeed(testFeed)
                 .then((res) => {
                     feedUrl = res.url;
 
-                    let timeCursor = new Date();
-                    let dT = 8000 * 1000;
                     log("creating a batch of posts, this will take a while...");
 
-                    let createposts = (count, feedName) => {
-                        return ibex
-                            .createPost(testContent(), feedName, null, null, new Date(timeCursor))
-                            .then((res) => {
-                                createdPosts.unshift(res.url);
 
-                                count--;
-                                timeCursor.setTime(timeCursor.getTime() - dT);
-                                if (count) { return createposts(count, feedName); }
-                            })
-                    }
-
-                    return createposts(postCount, testFeed)
-                        .then(() => {
+                    return createPosts(postCount, testFeed, testContent, new Date())
+                        .then((newPosts) => {
+                            createdPosts = newPosts;
                             log("done creating batch of posts");
+                            console.log(createdPosts)
                             let loader = new FeedLoader(feedUrl);
                             return loader.load(postsToBeFetched)
                                 .then((posts) => {
@@ -224,7 +215,7 @@ let ibextest = {
                 })
                 .then(() => {
                     let streamer = new FeedStreamer(feedUrl);
-                    log("streamer", streamer)
+                    //log("streamer", streamer)
 
                     return streamer.getNewerPostUrl()
                         .then((post) => assertEqual(createdPosts[createdPosts.length - 1], post, "should load last post"))
@@ -235,12 +226,40 @@ let ibextest = {
                         .then(() => streamer.getOlderPostUrl())
                         .then((post) => assertEqual(createdPosts[createdPosts.length - 3], post, "should load third last post"))
                 })
+
                 .finally(() => {
                     return ibex.deleteRecursive(feedUrl, true)
                 });
 
 
         },
+        () => {
+            let testFeedNames = ["testAggregator1", "testAggregator2", "testAggregator3"]
+            let testContent = () => { return "aggregator test post to be deleted " + new Date(); }
+            let postCount = 7;
+            let testFeeds = [];
+
+            return Promise.all(
+                testFeedNames.map(
+                    (feed) => ibex.createFeed(feed)
+                        .then(res => {
+                            log("Created feed", res.url)
+                            testFeeds.push(res.url);
+                            return createPosts(postCount, feed, testContent)
+                                .then((posts) => { let a = {}; a[res.url] = posts; return a })
+                        })
+
+                ))
+                .then((stuff) => {
+                    log(Object.assign(...stuff))
+
+                })
+                .finally(
+                    () => Promise.all(testFeeds.map(f => ibex.deleteRecursive(f, true)))
+                );
+
+
+        }
     ],
     run() {
         $("#run").prop('disabled', true);
@@ -296,6 +315,28 @@ let ibextest = {
 
     },
 };
+
+function createPosts(count, feedName, contentGenerator, date = new Date(), deltaSeconds = -7200) {
+    return ibex
+        .createPost(contentGenerator(), feedName, null, null, date)
+        .then((res) => {
+            // createdPosts.unshift(res.url);
+
+            count--;
+
+            if (count) {
+                return createPosts(count, feedName, contentGenerator, new Date(date.getTime() + deltaSeconds * 1000), deltaSeconds + Math.random())
+                    .then((posts) => {
+                        posts.push(res.url);
+                        return posts;
+                    });
+            }
+            return [res.url]
+        })
+}
+
+
+
 function assertGoodResponse(response, ...banner) {
     banner = banner || '';
     let success = (response.status == 200 || response.status == 201);
