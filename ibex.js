@@ -389,7 +389,7 @@ class FeedStreamer {
 
         //log("loading", postsToList, (loadOlderPosts ? "older" : "newer"), "posts")
         if (loadOlderPosts && this.reachedFirstPost) {
-            log("reached end of the feed", this.url);
+            // log("reached end of the feed", this.url());
             return []
         }
         let loadCountBeforeLoad = this.loadedCount();
@@ -398,7 +398,7 @@ class FeedStreamer {
         try {
             loadedPosts = await this.loader.load(postsToList, loadOlderPosts);
         } catch {
-            log("problems loading ", this.url());
+            log("problems loading feed ", this.url());
             return []
         }
 
@@ -424,10 +424,10 @@ class FeedStreamer {
         // log("post count:", this.loadedCount())
 
         if (this.olderId < 3) { // not yet loaded, or finishing
-            log("not enough old loaded posts, loading older posts")
-            console.time("load older");
+            //log("not enough old loaded posts, loading older posts")
+            // console.time("load older");
             await this._load(5, true);
-            console.timeEnd("load older");
+            // console.timeEnd("load older");
         }
         if (!this.loadedCount()) { return null; }
 
@@ -444,10 +444,10 @@ class FeedStreamer {
         // log("post count:", this.loadedCount(), "newerId", this.newerId)
         let candidate = this.loader.posts()[this.newerId];
         if (!candidate) { // need to load
-            log("not enough new loaded posts, loading newer posts")
-            console.time("load newer")
+            //log("not enough new loaded posts, loading newer posts")
+            // console.time("load newer")
             let posts = await this._load(5, false);
-            console.timeEnd("load newer")
+            // console.timeEnd("load newer")
         }
 
         // if (this.newerId + 4 > loadedCount) {
@@ -471,8 +471,6 @@ class FeedAggregator {
     posts = [];
     dateStarting = null;
     streamers = [];
-    from = null;
-    to = null;
     /**
      * as the aggregator controls the feed loaders,
      * it knows their lenghts before and after the loads,
@@ -482,12 +480,49 @@ class FeedAggregator {
      * maybe it should be implemented as a composite cursor
      * each element a cursor on its specific feed
      */
-    constructor(urls, dateStarting = new Date()) {
-        this.dateStarting = dateStarting;
+    constructor(urls = [], dateStarting = new Date()) {
+        // log(urls)
         this.streamers = urls.map((url) => new FeedStreamer(url, dateStarting));
+        // log(this);
     }
-    async getNewerPostUrl() { }
-    async getOlderPostUrl() { }
+    getNextOlderPostUrl() {
+        return Promise
+            .allSettled(this.streamers.map(s => {
+                return s.peekOlderPostUrl()
+                    .then((oldestUrl) => {
+                        return oldestUrl ? { url: oldestUrl, streamer: s } : null;
+                    });
+
+            }))
+            .then(results => results.filter(r => r.status == "fulfilled").map(r => r.value))
+            .then((allUrls) => {
+                return allUrls
+                    .filter(u => { return !!u })
+                    .sort((a, b) => {
+                        // log(a.url.slice(a.streamer.url().length), "<", b.url.slice(b.streamer.url().length))
+                        return (a.url.slice(a.streamer.url().length)
+                            >
+                            b.url.slice(b.streamer.url().length)
+                            ? -1 : 1
+                        );
+                    });
+
+            })
+            .then(sortedUrls => {
+                if (sortedUrls.length == 0) { return null }
+                // log("sorted", sortedUrls.map(u => u.url));
+                let winner = sortedUrls[0]
+                return winner.streamer.getOlderPostUrl()
+                    .then((url) => {
+                        // log("winning url", url)
+
+                        this.posts.push(url);
+                        return url;
+                    })
+
+
+            })
+    }
     posts() {
         return this.posts;
     }
@@ -495,4 +530,4 @@ class FeedAggregator {
 }
 
 export default Ibex;
-export { log, Ibex, FeedLoader, FeedStreamer };
+export { log, Ibex, FeedLoader, FeedStreamer, FeedAggregator };

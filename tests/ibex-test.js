@@ -1,4 +1,4 @@
-import { Ibex, log, FeedLoader, FeedStreamer } from "../ibex.js";
+import { Ibex, log, FeedLoader, FeedStreamer, FeedAggregator } from "../ibex.js";
 
 const FOAF = $rdf.Namespace('http://xmlns.com/foaf/0.1/');
 
@@ -233,11 +233,12 @@ let ibextest = {
 
 
         },
-        () => {
+        async () => {
             let testFeedNames = ["testAggregator1", "testAggregator2", "testAggregator3"]
             let testContent = () => { return "aggregator test post to be deleted " + new Date(); }
             let postCount = 7;
             let testFeeds = [];
+            let testPosts = [];
 
             return Promise.all(
                 testFeedNames.map(
@@ -245,13 +246,37 @@ let ibextest = {
                         .then(res => {
                             log("Created feed", res.url)
                             testFeeds.push(res.url);
-                            return createPosts(postCount, feed, testContent)
-                                .then((posts) => { let a = {}; a[res.url] = posts; return a })
+                            return createPosts(postCount, feed, testContent, new Date(), -600)
+                                .then((posts) => {
+                                    testPosts.push(...posts)
+                                    let a = {};
+                                    a[res.url] = posts;
+                                    return a
+                                })
                         })
 
                 ))
-                .then((stuff) => {
-                    log(Object.assign(...stuff))
+                .then(async (stuff) => {
+                    // log(Object.assign(...stuff))
+                    let gator = new FeedAggregator(testFeeds);
+                    let posts = [];
+
+                    let next = await gator.getNextOlderPostUrl();
+
+                    console.time("loadingfeeds")
+
+                    while (next) {
+                        posts.push(next);
+                        next = await gator.getNextOlderPostUrl();
+                        log("next post", next)
+                    }
+
+                    console.timeEnd("loadingfeeds")
+
+                    //log(posts)
+                    //log(gator.posts)
+
+                    return assertEqual(testPosts.sort(rubbishUrlcomparator), posts)
 
                 })
                 .finally(
@@ -259,6 +284,87 @@ let ibextest = {
                 );
 
 
+        },
+        async () => {
+            let mockStreamers = [
+                {
+                    feed: "https://gaia.solid.community/is.darcy/feed/testAggregator1/",
+                    urls: [
+                        "https://gaia.solid.community/is.darcy/feed/testAggregator1/2020/09/24/2020-09-24T10.12.54.465Z.md",
+                        "https://gaia.solid.community/is.darcy/feed/testAggregator1/2020/09/24/2020-09-24T12.12.52.879Z.md",
+                        "https://gaia.solid.community/is.darcy/feed/testAggregator1/2020/09/24/2020-09-24T14.12.51.349Z.md",
+                        "https://gaia.solid.community/is.darcy/feed/testAggregator1/2020/09/24/2020-09-24T16.12.50.096Z.md",
+                        "https://gaia.solid.community/is.darcy/feed/testAggregator1/2020/09/24/2020-09-24T18.12.48.998Z.md",
+                        "https://gaia.solid.community/is.darcy/feed/testAggregator1/2020/09/24/2020-09-24T20.12.48.397Z.md",
+                        "https://gaia.solid.community/is.darcy/feed/testAggregator1/2020/09/24/2020-09-24T22.12.48.397Z.md"
+                    ]
+                },
+                {
+                    feed: "https://gaia.solid.community/is.darcy/feed/testAggregator2/",
+                    urls: [
+                        "https://gaia.solid.community/is.darcy/feed/testAggregator2/2020/09/24/2020-09-24T10.12.58.087Z.md",
+                        "https://gaia.solid.community/is.darcy/feed/testAggregator2/2020/09/24/2020-09-24T12.12.54.953Z.md",
+                        "https://gaia.solid.community/is.darcy/feed/testAggregator2/2020/09/24/2020-09-24T14.12.52.485Z.md",
+                        "https://gaia.solid.community/is.darcy/feed/testAggregator2/2020/09/24/2020-09-24T16.12.50.498Z.md",
+                        "https://gaia.solid.community/is.darcy/feed/testAggregator2/2020/09/24/2020-09-24T18.12.49.305Z.md",
+                        "https://gaia.solid.community/is.darcy/feed/testAggregator2/2020/09/24/2020-09-24T20.12.48.400Z.md",
+                        "https://gaia.solid.community/is.darcy/feed/testAggregator2/2020/09/24/2020-09-24T22.12.48.400Z.md"
+                    ]
+                },
+                {
+                    feed: "https://gaia.solid.community/is.darcy/feed/testAggregator3/",
+                    urls: [
+                        "https://gaia.solid.community/is.darcy/feed/testAggregator3/2020/09/24/2020-09-24T10.13.00.266Z.md",
+                        "https://gaia.solid.community/is.darcy/feed/testAggregator3/2020/09/24/2020-09-24T12.12.56.773Z.md",
+                        "https://gaia.solid.community/is.darcy/feed/testAggregator3/2020/09/24/2020-09-24T14.12.53.471Z.md",
+                        "https://gaia.solid.community/is.darcy/feed/testAggregator3/2020/09/24/2020-09-24T16.12.51.034Z.md",
+                        "https://gaia.solid.community/is.darcy/feed/testAggregator3/2020/09/24/2020-09-24T18.12.49.274Z.md",
+                        "https://gaia.solid.community/is.darcy/feed/testAggregator3/2020/09/24/2020-09-24T20.12.48.403Z.md",
+                        "https://gaia.solid.community/is.darcy/feed/testAggregator3/2020/09/24/2020-09-24T22.12.48.403Z.md"
+                    ]
+                }
+            ].map((e) => new MockStreamer(e.feed, e.urls));
+
+
+
+            let gator = new FeedAggregator();
+            gator.streamers = mockStreamers;
+            let posts = [];
+            let olderUrl = null;
+
+            while ((olderUrl = await gator.getNextOlderPostUrl())) {
+                posts.push(olderUrl)
+            }
+            // log(posts);
+
+            let expected = [
+                "https://gaia.solid.community/is.darcy/feed/testAggregator1/2020/09/24/2020-09-24T10.12.54.465Z.md",
+                "https://gaia.solid.community/is.darcy/feed/testAggregator1/2020/09/24/2020-09-24T12.12.52.879Z.md",
+                "https://gaia.solid.community/is.darcy/feed/testAggregator1/2020/09/24/2020-09-24T14.12.51.349Z.md",
+                "https://gaia.solid.community/is.darcy/feed/testAggregator1/2020/09/24/2020-09-24T16.12.50.096Z.md",
+                "https://gaia.solid.community/is.darcy/feed/testAggregator1/2020/09/24/2020-09-24T18.12.48.998Z.md",
+                "https://gaia.solid.community/is.darcy/feed/testAggregator1/2020/09/24/2020-09-24T20.12.48.397Z.md",
+                "https://gaia.solid.community/is.darcy/feed/testAggregator1/2020/09/24/2020-09-24T22.12.48.397Z.md",
+                "https://gaia.solid.community/is.darcy/feed/testAggregator2/2020/09/24/2020-09-24T10.12.58.087Z.md",
+                "https://gaia.solid.community/is.darcy/feed/testAggregator2/2020/09/24/2020-09-24T12.12.54.953Z.md",
+                "https://gaia.solid.community/is.darcy/feed/testAggregator2/2020/09/24/2020-09-24T14.12.52.485Z.md",
+                "https://gaia.solid.community/is.darcy/feed/testAggregator2/2020/09/24/2020-09-24T16.12.50.498Z.md",
+                "https://gaia.solid.community/is.darcy/feed/testAggregator2/2020/09/24/2020-09-24T18.12.49.305Z.md",
+                "https://gaia.solid.community/is.darcy/feed/testAggregator2/2020/09/24/2020-09-24T20.12.48.400Z.md",
+                "https://gaia.solid.community/is.darcy/feed/testAggregator2/2020/09/24/2020-09-24T22.12.48.400Z.md",
+                "https://gaia.solid.community/is.darcy/feed/testAggregator3/2020/09/24/2020-09-24T10.13.00.266Z.md",
+                "https://gaia.solid.community/is.darcy/feed/testAggregator3/2020/09/24/2020-09-24T12.12.56.773Z.md",
+                "https://gaia.solid.community/is.darcy/feed/testAggregator3/2020/09/24/2020-09-24T14.12.53.471Z.md",
+                "https://gaia.solid.community/is.darcy/feed/testAggregator3/2020/09/24/2020-09-24T16.12.51.034Z.md",
+                "https://gaia.solid.community/is.darcy/feed/testAggregator3/2020/09/24/2020-09-24T18.12.49.274Z.md",
+                "https://gaia.solid.community/is.darcy/feed/testAggregator3/2020/09/24/2020-09-24T20.12.48.403Z.md",
+                "https://gaia.solid.community/is.darcy/feed/testAggregator3/2020/09/24/2020-09-24T22.12.48.403Z.md"
+
+            ].sort(rubbishUrlcomparator);
+            // log(posts)
+            // log(gator.posts)
+            assertEqual(expected, gator.posts)
+            return assertEqual(expected, posts)
         }
     ],
     run() {
@@ -315,6 +421,32 @@ let ibextest = {
 
     },
 };
+
+function rubbishUrlcomparator(a, b) {
+    return (a.match(/is\.darcy\/feed\/[^\/]+\/(.*)/)[1]
+        >
+        b.match(/is\.darcy\/feed\/[^\/]+\/(.*)/)[1]
+        ? -1 : 1
+    );
+}
+
+class MockStreamer {
+    posts = [];
+    myUrl = '';
+    constructor(url, posts) {
+        this.myUrl = url;
+        this.posts = posts;
+    }
+
+    async getOlderPostUrl() {
+        return this.posts.pop();
+    }
+    async peekOlderPostUrl() {
+        return this.posts[this.posts.length - 1];
+    }
+    url() { return this.myUrl }
+}
+
 
 function createPosts(count, feedName, contentGenerator, date = new Date(), deltaSeconds = -7200) {
     return ibex
@@ -392,3 +524,5 @@ function stacktrace(e) {
 
 
 export default ibextest;
+
+
