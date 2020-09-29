@@ -388,7 +388,8 @@ let ibextest = {
             $('#run').text("run")
             return
         }
-        log("running test", testnum);
+        let currentTestElementId = log("running test", testnum);
+        let startAt = new Date();
         setTimeout(
             () => {
                 try {
@@ -402,7 +403,10 @@ let ibextest = {
                                 console.log(e)
 
                             })
-                            .finally(() => { this.runtest(testnum + 1) })
+                            .finally(() => {
+                                $(currentTestElementId).append(" done in " + (new Date() - startAt) + "ms");
+                                this.runtest(testnum + 1);
+                            })
                         return;
                     }
                 }
@@ -412,6 +416,8 @@ let ibextest = {
                     console.log("TEST " + testnum + " CRASHED");
                     console.log(e.stack)
                 }
+
+                $(currentTestElementId).append(" (" + (new Date() - startAt) + " ms)");
 
                 this.runtest(testnum + 1)
 
@@ -521,7 +527,6 @@ function stacktrace(e) {
             && r != "Error"
     });
 }
-
 
 export default ibextest;
 

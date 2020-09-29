@@ -7,23 +7,23 @@ const RDF = $rdf.Namespace("http://www.w3.org/1999/02/22-rdf-syntax-ns#")
 
 const { AclApi, AclParser, Permissions, Agents } = SolidAclUtils;
 const { READ, WRITE, CONTROL } = Permissions;
-
-
+var logEntryCounter = 1;
 var log = (...data) => {
     data = data || false;
     if (!$) {
         console.log(data);
-        return data[0]
+        return;
     }
 
-    $('#logresults').append($('<pre>').text(
+    let logId = "logentry" + logEntryCounter++;
+    $('#logresults').append($('<pre>', { id: logId }).text(
         data.map(
             (e) => {
                 return ('string' !== typeof e) ? JSON.stringify(e, null, 2) : e
             }
-
-        ).join(" ")));
-    return data[0]
+        ).join(" ")
+    ));
+    return "#" + logId;
 }
 
 class Ibex {
