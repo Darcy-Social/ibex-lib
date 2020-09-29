@@ -14,13 +14,26 @@ let ibextest = {
 
     tests: [
         () => {
+            let feedName = "testPublic";
+
             return ibex
-                .createFeed(ibex.defaultFeed)
-                .catch((res) => fail(`can't create feed ${res.url}`))
-                .then((res) => ibex.willFetch(res.url))
-                .then((res) => assertGoodResponse(res, "can't fetch feed ", res.url, "I just created"))
-                .then((res) => aclApi.loadFromFileUrl(res.url))
-                .then((doc) => assertTrue(doc.hasRule(READ, Agents.PUBLIC), "PUBLIC should have READ privilege"))
+                .createFeed(feedName)
+                .catch((res) => {
+                    fail(`can't create feed ${res.url}`)
+                    console.log(res)
+                })
+                .then((res) => {
+                    return ibex.willFetch(res.url)
+                        .then((res) => assertGoodResponse(res, "can't fetch feed ", res.url, "I just created"))
+                        .then((res) => aclApi.loadFromFileUrl(res.url))
+                        .then((doc) => assertTrue(doc.hasRule(READ, Agents.PUBLIC), "feed " + feedName + " should have public READ privilege"))
+                        .then(() => ibex.manifest())
+                        .then(manifest => assertTrue(manifest[res.url]))
+                        .finally(() => ibex.deleteRecursive(res.url)
+                            .then(() => ibex.manifest())
+                            .then(manifest => assertFalse(manifest[res.url]))
+                        )
+                })
         },
         () => {
             let content = "test post " + Math.random();
@@ -49,7 +62,7 @@ let ibextest = {
                 ibex.root() + "/../darcywashereyoucanremoveme.txt", {
                 method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: "remove me whenever, this should not have been left here"
             }).then((r) => {
-                fail("Darcy should not be able to write the file", r.url)
+                meh("Darcy should not be able to write the file", r.url)
                 return ibex.delete(r.url)
             }).catch((r) => pass("Darcy is not able to write in your root, good"))
         },
@@ -59,7 +72,7 @@ let ibextest = {
             const { AclApi, AclParser, Permissions } = SolidAclUtils;
             const { READ } = Permissions;
 
-            aclApi
+            return aclApi
                 .loadFromFileUrl(fileUrl)
                 .then((acl) => acl.addRule(READ, giulio))
                 .then(aclApi.loadFromFileUrl(fileUrl)) //again
@@ -165,126 +178,6 @@ let ibextest = {
                     return ibex.deleteRecursive(feedUrl)
                 });
         },
-        () => {
-
-            let testFeed = "testload";
-            let testContent = () => { return "content test post to be deleted " + new Date(); }
-            let feedUrl = null;
-            let postCount = 4;
-            let postsToBeFetched = 2;
-            let createdPosts = []
-
-
-            return ibex.createFeed(testFeed)
-                .then((res) => {
-                    feedUrl = res.url;
-
-                    log("creating a batch of posts, this will take a while...");
-
-
-                    return createPosts(postCount, testFeed, testContent, new Date())
-                        .then((newPosts) => {
-                            createdPosts = newPosts;
-                            log("done creating batch of posts");
-                            console.log(createdPosts)
-                            let loader = new FeedLoader(feedUrl);
-                            return loader.load(postsToBeFetched)
-                                .then((posts) => {
-                                    assertEqual(postsToBeFetched, posts.length, "the unbounded loader does not load the minimum amount of posts");
-                                    assertEqual(
-                                        createdPosts.slice(posts.length - createdPosts.length),
-                                        posts,
-                                        "the loader should have loaded the first " + postsToBeFetched + " posts in the correct order");
-
-                                    let futureDate = new Date(new Date().getTime() + (86400 * 1000));
-                                    return ibex.createPost(testContent(), testFeed, null, null, futureDate)
-                                        .then((newerPost) => {
-                                            return loader.loadOlder(20)
-                                                .then((posts) => {
-                                                    assertEqual(createdPosts, loader.posts(), "it should not have loaded the post in the future, it was looking only backwards");
-                                                    return loader.loadNewer();
-                                                })
-                                                .then((allLoadedPosts) => {
-                                                    createdPosts.push(newerPost.url);
-                                                    assertEqual(createdPosts, allLoadedPosts);
-                                                    // log(allLoadedPosts);
-                                                })
-                                        })
-                                })
-                        })
-                })
-                .then(() => {
-                    let streamer = new FeedStreamer(feedUrl);
-                    //log("streamer", streamer)
-
-                    return streamer.getNewerPostUrl()
-                        .then((post) => assertEqual(createdPosts[createdPosts.length - 1], post, "should load last post"))
-                        .then(() => streamer.getNewerPostUrl())
-                        .then((noPost) => assertEqual(null, noPost, "Should load no more new posts"))
-                        .then(() => streamer.getOlderPostUrl())
-                        .then((post) => assertEqual(createdPosts[createdPosts.length - 2], post, "should load second last post"))
-                        .then(() => streamer.getOlderPostUrl())
-                        .then((post) => assertEqual(createdPosts[createdPosts.length - 3], post, "should load third last post"))
-                })
-
-                .finally(() => {
-                    return ibex.deleteRecursive(feedUrl, true)
-                });
-
-
-        },
-        async () => {
-            let testFeedNames = ["testAggregator1", "testAggregator2", "testAggregator3"]
-            let testContent = () => { return "aggregator test post to be deleted " + new Date(); }
-            let postCount = 7;
-            let testFeeds = [];
-            let testPosts = [];
-
-            return Promise.all(
-                testFeedNames.map(
-                    (feed) => ibex.createFeed(feed)
-                        .then(res => {
-                            log("Created feed", res.url)
-                            testFeeds.push(res.url);
-                            return createPosts(postCount, feed, testContent, new Date(), -600)
-                                .then((posts) => {
-                                    testPosts.push(...posts)
-                                    let a = {};
-                                    a[res.url] = posts;
-                                    return a
-                                })
-                        })
-
-                ))
-                .then(async (stuff) => {
-                    // log(Object.assign(...stuff))
-                    let gator = new FeedAggregator(testFeeds);
-                    let posts = [];
-
-                    let next = await gator.getNextOlderPostUrl();
-
-                    console.time("loadingfeeds")
-
-                    while (next) {
-                        posts.push(next);
-                        next = await gator.getNextOlderPostUrl();
-                        log("next post", next)
-                    }
-
-                    console.timeEnd("loadingfeeds")
-
-                    //log(posts)
-                    //log(gator.posts)
-
-                    return assertEqual(testPosts.sort(rubbishUrlcomparator), posts)
-
-                })
-                .finally(
-                    () => Promise.all(testFeeds.map(f => ibex.deleteRecursive(f, true)))
-                );
-
-
-        },
         async () => {
             let mockStreamers = [
                 {
@@ -365,7 +258,126 @@ let ibextest = {
             // log(gator.posts)
             assertEqual(expected, gator.posts)
             return assertEqual(expected, posts)
-        }
+        },
+        () => {
+
+            let testFeed = "testload";
+            let testContent = () => { return "content test post to be deleted " + new Date(); }
+            let feedUrl = null;
+            let postCount = 4;
+            let postsToBeFetched = 2;
+            let createdPosts = []
+
+
+            return ibex.createFeed(testFeed)
+                .then((res) => {
+                    feedUrl = res.url;
+
+                    log("creating a batch of posts, this will take a while...");
+
+                    return createPosts(postCount, testFeed, testContent, new Date())
+                        .then((newPosts) => {
+                            createdPosts = newPosts;
+                            log("done creating batch of posts");
+                            console.log(createdPosts)
+                            let loader = new FeedLoader(feedUrl);
+                            return loader.load(postsToBeFetched)
+                                .then((posts) => {
+                                    assertEqual(postsToBeFetched, posts.length, "the unbounded loader does not load the minimum amount of posts");
+                                    assertEqual(
+                                        createdPosts.slice(posts.length - createdPosts.length),
+                                        posts,
+                                        "the loader should have loaded the first " + postsToBeFetched + " posts in the correct order");
+
+                                    let futureDate = new Date(new Date().getTime() + (86400 * 1000));
+                                    return ibex.createPost(testContent(), testFeed, null, null, futureDate)
+                                        .then((newerPost) => {
+                                            return loader.loadOlder(20)
+                                                .then((posts) => {
+                                                    assertEqual(createdPosts, loader.posts(), "it should not have loaded the post in the future, it was looking only backwards");
+                                                    return loader.loadNewer();
+                                                })
+                                                .then((allLoadedPosts) => {
+                                                    createdPosts.push(newerPost.url);
+                                                    assertEqual(createdPosts, allLoadedPosts);
+                                                    // log(allLoadedPosts);
+                                                })
+                                        })
+                                })
+                        })
+                })
+                .then(() => {
+                    let streamer = new FeedStreamer(feedUrl);
+                    //log("streamer", streamer)
+
+                    return streamer.getNewerPostUrl()
+                        .then((post) => assertEqual(createdPosts[createdPosts.length - 1], post, "should load last post"))
+                        .then(() => streamer.getNewerPostUrl())
+                        .then((noPost) => assertEqual(null, noPost, "Should load no more new posts"))
+                        .then(() => streamer.getOlderPostUrl())
+                        .then((post) => assertEqual(createdPosts[createdPosts.length - 2], post, "should load second last post"))
+                        .then(() => streamer.getOlderPostUrl())
+                        .then((post) => assertEqual(createdPosts[createdPosts.length - 3], post, "should load third last post"))
+                })
+
+                .finally(() => {
+                    return ibex.deleteRecursive(feedUrl, true)
+                });
+
+
+        },
+        async () => {
+            let testFeedNames = ["testAggregator1", "testAggregator2", "testAggregator3"]
+            let testContent = () => { return "aggregator test post to be deleted " + new Date(); }
+            let postCount = 7;
+            let testFeeds = [];
+            let testPosts = [];
+
+            log("Creating three test feeds and many posts, this will take a while...");
+            return Promise.all(
+                testFeedNames.map(
+                    (feed) => ibex.createFeed(feed)
+                        .then(res => {
+                            //log("Created feed", res.url)
+                            testFeeds.push(res.url);
+                            return createPosts(postCount, feed, testContent, new Date(), -600)
+                                .then((posts) => {
+                                    testPosts.push(...posts)
+                                    let a = {};
+                                    a[res.url] = posts;
+                                    return a
+                                })
+                        })
+
+                ))
+                .then(async (stuff) => {
+                    // log(Object.assign(...stuff))
+                    let gator = new FeedAggregator(testFeeds);
+                    let posts = [];
+
+                    let next = await gator.getNextOlderPostUrl();
+
+                    console.time("loadingfeeds")
+
+                    while (next) {
+                        posts.push(next);
+                        next = await gator.getNextOlderPostUrl();
+                        //log("next post", next)
+                    }
+
+                    console.timeEnd("loadingfeeds")
+                    assertEqual(postCount * testFeedNames.length, testPosts.length)
+
+                    return assertEqual(testPosts.sort(rubbishUrlcomparator), posts)
+
+                })
+                .finally(
+                    () => Promise.all(testFeeds.map(f => ibex.deleteRecursive(f)))
+                );
+
+
+        },
+
     ],
     run() {
         $("#run").prop('disabled', true);
@@ -429,10 +441,11 @@ let ibextest = {
 };
 
 function rubbishUrlcomparator(a, b) {
-    return (a.match(/is\.darcy\/feed\/[^\/]+\/(.*)/)[1]
-        >
-        b.match(/is\.darcy\/feed\/[^\/]+\/(.*)/)[1]
-        ? -1 : 1
+    if (a == b) { return 0 }
+    return (
+        a.match(/is\.darcy\/feed\/[^\/]+\/(.*)/)[1] > b.match(/is\.darcy\/feed\/[^\/]+\/(.*)/)[1]
+            ? -1
+            : 1
     );
 }
 
@@ -491,6 +504,11 @@ function assertTrue(a, ...banner) {
     (!!a) ? pass() : fail(...banner, '[', a, '] should have been true-ish');
     return !!a;
 }
+function assertFalse(a, ...banner) {
+    banner = banner || '';
+    (!a) ? pass() : fail(...banner, '[', a, '] should have been false-ish');
+    return !!a;
+}
 function assertEqual(expected, result, ...banner) {
     banner = banner || '';
     let equal = JSON.stringify(expected) === JSON.stringify(result);
@@ -513,6 +531,14 @@ function fail(...data) {
     let trace = stacktrace();
     if (trace.length > 0) { log(trace) }
 }
+function meh(...data) {
+    $('#logchecks').append('😑');
+    log("😑", ...data);
+    let trace = stacktrace();
+    if (trace.length > 0) { log(trace) }
+}
+
+
 function crash(...data) {
     $('#logchecks').append('💥');
     log("💥", ...data);
@@ -522,6 +548,8 @@ function stacktrace(e) {
     return (e || Error()).stack.split(/\n +/g).filter((r) => {
         return !r.startsWith("at assertEqual (")
             && !r.startsWith("at assertTrue (")
+            && !r.startsWith("at assertFalse (")
+            && !r.startsWith("at meh (")
             && !r.startsWith("at stacktrace (")
             && !r.startsWith("at fail (")
             && r != "Error"

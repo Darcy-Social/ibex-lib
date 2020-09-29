@@ -1,3 +1,4 @@
+import ibextest from "./tests/ibex-test.js";
 
 // import { $rdf } from "./libs/rdflib.min.js";
 const FOAF = $rdf.Namespace('http://xmlns.com/foaf/0.1/');
@@ -33,6 +34,7 @@ class Ibex {
     myRootPath = 'is.darcy';
     feedLocation = "feed";
     defaultFeed = 'main';
+    manifestFileBasename = 'manifest.json'
     settingsFileBasename = 'config.json'
 
     constructor(me) {
@@ -41,6 +43,7 @@ class Ibex {
     }
     root() { return this.myHost + '/' + this.myRootPath; }
     feedRoot() { return this.root() + '/' + this.feedLocation; }
+    manifestFile() { return this.root() + '/' + this.feedLocation + '/' + this.manifestFileBasename; }
     configFile() { return this.root() + '/' + this.settingsFileBasename; }
 
     loadSettings() {
@@ -55,7 +58,6 @@ class Ibex {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(settings, null, 2)
         })
-
     }
 
     getPostText(url) { return this.getText(url); }
@@ -104,31 +106,66 @@ class Ibex {
     }
     createFeed(feedName) {
         return this.makePath(this.feedRoot(), feedName)
-            .then((res) => this
-                .loadAcl(res.url)
-                .then((acl) => {
+            .then((res) =>
+                this.ensureACL(res.url, [[READ, Agents.PUBLIC]])
+                    .then(() => this.manifest())
+                    .then(manifest => {
+                        manifest[res.url] = manifest[res.url] || { listedDate: new Date() };
+                        return this.saveManifest(manifest)
+                    })
+                    .then(() => this.willFetch(res.url))
+            )
 
-                    let ensureDefaultRule = (privilege, agent) => {
-                        if (!acl.hasDefaultRule(privilege, agent)) { acl.addDefaultRule(privilege, agent) }
-                    }
+    }
+    ensureACL(url, newAcls = []) {
+        return this.loadAcl(url)
+            .then((acl) => {
 
-                    ensureDefaultRule([WRITE, READ, CONTROL], this.me);
-                    ensureDefaultRule(READ, Agents.PUBLIC);
+                let ensureDefaultRule = (privilege, agent) => {
+                    if (!acl.hasDefaultRule(privilege, agent)) { acl.addDefaultRule(privilege, agent) }
+                }
 
-                    return acl.saveToPod()
-                        .then((acl) => this.willFetch(res.url))
-                }))
+                ensureDefaultRule([WRITE, READ, CONTROL], this.me);
+                newAcls.forEach((anAclRule) => ensureDefaultRule(...anAclRule));
+
+                return acl.saveToPod()
+            })
+
+
+    }
+    manifest() {
+        return this.willFetch(this.manifestFile())
+            .then((res) => res.json())
+            .catch(() => { return {} });
+    }
+    saveManifest(manifest) {
+        return this.willFetch(
+            this.manifestFile(), {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(manifest, null, 2)
+        })
+            .then(() => this.ensureACL(this.manifestFile(), [[READ, Agents.PUBLIC]]))
     }
 
     deleteRecursive(folder, onlyFiles = false) {
         console.log("deleting " + folder)
+        if (!folder.startsWith(this.root())) {
+            return Promise.reject("Invalid path: can't delete " + folder.uri)
+        }
         return this._deleteRecursive($rdf.sym(folder), onlyFiles)
+            .then(() => this.manifest()
+                .then(manifest => {
+                    if (manifest[folder]) {
+                        //log("deleting", folder, "from manifest")
+                        delete manifest[folder];
+                        return this.saveManifest(manifest);
+                    }
+                }))
     }
 
     _deleteRecursive(folder, onlyFiles = false) {
-        if (!folder.uri.startsWith(this.root())) {
-            return Promise.reject("Invalid path: can't delete " + folder.uri)
-        }
+
+
 
         const store = $rdf.graph();
         const fetcher = new $rdf.Fetcher(store);
