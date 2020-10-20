@@ -2,12 +2,12 @@ import ibextest from "./tests/ibex-test.js";
 
 // import { $rdf } from "./libs/rdflib.min.js";
 const FOAF = $rdf.Namespace('http://xmlns.com/foaf/0.1/');
-
 const LDP = $rdf.Namespace("http://www.w3.org/ns/ldp#");
 const RDF = $rdf.Namespace("http://www.w3.org/1999/02/22-rdf-syntax-ns#")
+const NS = $rdf.Namespace("http://www.w3.org/2006/vcard/ns#")
 
 const { AclApi, AclParser, Permissions, Agents } = SolidAclUtils;
-const { READ, WRITE, CONTROL } = Permissions;
+const { READ, WRITE, CONTROL, APPEND } = Permissions;
 var logEntryCounter = 1;
 var log = (...data) => {
     data = data || false;
@@ -40,16 +40,18 @@ class Ibex {
     constructor(me) {
         this.me = me;
         this.myHost = this.urlDomain(me);
+
+
     }
-    root() { return this.myHost + '/' + this.myRootPath; }
-    feedRoot() { return this.root() + '/' + this.feedLocation; }
-    manifestFile() { return this.root() + '/' + this.feedLocation + '/' + this.manifestFileBasename; }
-    configFile() { return this.root() + '/' + this.settingsFileBasename; }
+    root() { return this.myHost + '/' + this.myRootPath + '/'; }
+    feedRoot() { return this.root() + this.feedLocation + '/'; }
+    manifestFile() { return this.feedRoot() + this.manifestFileBasename; }
+    configFile() { return this.root() + this.settingsFileBasename; }
 
     loadSettings() {
         return this.willFetch(this.configFile()).then(
             (res) => res.json()
-        )
+        ).catch(() => { return {} })
     }
 
     saveSettings(settings) {
@@ -82,7 +84,9 @@ class Ibex {
         if (newFolder) {
             container += '/' + newFolder;
         }
-        [newFolder, container] = this.basePath(container);
+
+        [newFolder, container] = basePath(container);
+
         //log('mkdir', container, newFolder);
 
         let path = container + newFolder;
@@ -100,38 +104,152 @@ class Ibex {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'text/turtle', 'Link': '<http://www.w3.org/ns/ldp#BasicContainer>; rel="type"', "Slug": newFolder }
                             }
-                        ).then(res => this.willFetch(path));
+                        ).then(res => {
+                            if (res.url == this.root()) {
+                                return this.ensureACL(res.url).then(() => this.willFetch(path))
+                            }
+                            return this.willFetch(path)
+                        });
                     });
             });
     }
     createFeed(feedName) {
+        //log("creating feed", feedName)
         return this.makePath(this.feedRoot(), feedName)
-            .then((res) =>
-                this.ensureACL(res.url, [[READ, Agents.PUBLIC]])
-                    .then(() => this.manifest())
-                    .then(manifest => {
-                        manifest[res.url] = manifest[res.url] || { listedDate: new Date() };
-                        return this.saveManifest(manifest)
-                    })
-                    .then(() => this.willFetch(res.url))
-            )
-
-    }
-    ensureACL(url, newAcls = []) {
-        return this.loadAcl(url)
-            .then((acl) => {
-
-                let ensureDefaultRule = (privilege, agent) => {
-                    if (!acl.hasDefaultRule(privilege, agent)) { acl.addDefaultRule(privilege, agent) }
-                }
-
-                ensureDefaultRule([WRITE, READ, CONTROL], this.me);
-                newAcls.forEach((anAclRule) => ensureDefaultRule(...anAclRule));
-
-                return acl.saveToPod()
+            .then((res) => {
+                return this.makePath(res.url + "contrib/").then(
+                    () => this.setFeedPermissions(res.url, [], undefined, undefined)
+                        .then(() => this.manifest())
+                        .then(manifest => {
+                            manifest[res.url] = manifest[res.url] || { listedDate: new Date() };
+                            return this.saveManifest(manifest)
+                        })
+                        .then(() => this.willFetch(res.url))
+                )
             })
 
+    }
+    /**
+     * 
+     * @param {string} feedUrl 
+     * @param {*} writers - array of webids, if undefined only owner can write
+     * @param {*} readers - array of webids, if undefined public readable
+     *
+     * @param {*} commenters - array of webids, if undefined only authenticated users can comment
+     */
+    async setFeedPermissions(feedUrl, writers = undefined, readers = undefined, commenters = undefined) {
 
+        let groupFile = await this.setupFeedGroupFile(
+            feedUrl,
+            Array.isArray(writers) ? writers : [],
+            Array.isArray(readers) ? readers : [],
+            Array.isArray(commenters) ? commenters : [],
+        );
+
+
+        let feedPermissions = [
+            [[READ, WRITE, CONTROL], groupFile + "#writers"],
+            [READ, groupFile + "#readers"],
+            [READ, groupFile + "#commenters"]
+        ];
+        let feedRemovePermissions = [];
+        if (!readers) {
+            feedPermissions.push([READ, Agents.PUBLIC])
+        } else {
+            feedRemovePermissions.push([READ, Agents.PUBLIC])
+        }
+        this.ensureACL(feedUrl, feedPermissions, feedRemovePermissions);
+
+        let contribPermissions = [
+            [[READ, WRITE, CONTROL], groupFile + "#writers"],
+            [READ, groupFile + "#readers"],
+            [[READ, APPEND], groupFile + "#commenters"]
+        ];
+        let contribRemovePermissions = [];
+        if (!commenters) {
+            contribPermissions.push([APPEND, Agents.AUTHENTICATED])
+        } else {
+            contribRemovePermissions.push([APPEND, Agents.AUTHENTICATED])
+        }
+        if (!readers) {
+            contribPermissions.push([READ, Agents.PUBLIC])
+        } else {
+            contribRemovePermissions.push([READ, Agents.PUBLIC])
+        }
+        this.ensureACL(feedUrl + "contrib/", contribPermissions, contribRemovePermissions);
+
+        return;
+
+    }
+
+    async setupFeedGroupFile(feedUrl, writers = [], readers = [], commenters = []) {
+        const store = $rdf.graph();
+        const fetcher = new $rdf.Fetcher(store);
+        const updater = new $rdf.UpdateManager(store)
+
+        let docURI = feedUrl + 'groups.ttl';
+
+        // doc is actually the whole document, not just the why
+        let doc = store.sym(docURI);
+
+        let writersGroup = store.sym(docURI + '#writers');
+        store.add(writersGroup, RDF('type'), NS("Group"), doc)
+        store.add(writersGroup, NS("hasMember"), store.sym(this.me), doc);
+        writers.forEach(w => store.add(writersGroup, NS("hasMember"), store.sym(w), doc))
+        //store.add(writersGroup, NS("hasMember"), store.sym("https://tsojcanth.darcypod.com:8443/profile/card#me"), doc)
+
+        let readersGroup = store.sym(docURI + "#readers")
+        store.add(readersGroup, RDF('type'), NS("Group"), doc)
+        store.add(readersGroup, NS("hasMember"), store.sym(this.me), doc);
+        readers.forEach(r => store.add(readersGroup, NS("hasMember"), store.sym(r), doc))
+
+        let commentersGroup = store.sym(docURI + "#commenters")
+        store.add(commentersGroup, RDF('type'), NS("Group"), doc)
+        store.add(commentersGroup, NS("hasMember"), store.sym(this.me), doc);
+        commenters.forEach(c => store.add(commentersGroup, NS("hasMember"), store.sym(c), doc))
+
+        let k = await updater.put(
+            doc,
+            store.statementsMatching(undefined, undefined, undefined, doc),
+            'text/turtle',
+            function (uri, ok, message) {
+                if (!ok) {
+                    log("fail to update group " + uri, ok, message)
+                } else {
+                    //console.log("group doc ", docURI, " set up", ok, message)
+                }
+            }
+        )
+
+        return docURI;
+    }
+    ensureACL(url, newAcls = [], removeAcls = []) {
+        return this.loadAcl(url)
+            .then(async (acl) => {
+
+                let ensureRule = (privilege, agent) => {
+                    if (url.endsWith('/')) {
+
+                        if (!acl.hasDefaultRule(privilege, agent)) {
+                            acl.addDefaultRule(privilege, agent)
+                        }
+                    } else {
+                        if (!acl.hasRule(privilege, agent)) {
+                            acl.addRule(privilege, agent)
+                        }
+                    }
+                }
+
+                ensureRule([WRITE, READ, CONTROL], this.me);
+                newAcls.forEach((anAclRule) => ensureRule(...anAclRule));
+
+                removeAcls.forEach((anAclRule) => { log(acl.deleteRule(...anAclRule)) })
+
+                // const parser = new AclParser({ url, url })
+                // const newTurtle = await parser.aclDocToTurtle(acl);
+                // console.log(newTurtle)
+                return acl.saveToPod()
+            })
     }
     manifest() {
         return this.willFetch(this.manifestFile())
@@ -148,7 +266,7 @@ class Ibex {
     }
 
     deleteRecursive(folder, onlyFiles = false) {
-        console.log("deleting " + folder)
+        //console.log("deleting " + folder)
         if (!folder.startsWith(this.root())) {
             return Promise.reject("Invalid path: can't delete " + folder.uri)
         }
@@ -164,8 +282,6 @@ class Ibex {
     }
 
     _deleteRecursive(folder, onlyFiles = false) {
-
-
 
         const store = $rdf.graph();
         const fetcher = new $rdf.Fetcher(store);
@@ -185,7 +301,7 @@ class Ibex {
                 return Promise.all(promises)
                     .then(() => {
                         if (!onlyFiles) {
-                            console.log("deleting directory " + folder.uri);
+                            //console.log("deleting directory " + folder.uri);
                             return fetcher.webOperation('DELETE', folder.uri)
                         }
                     })
@@ -203,19 +319,17 @@ class Ibex {
 
         slug = urlflatten(slug || ts(dateOfPosting));
 
-        let path = [
-            this.feedRoot(),
-            feed,
-            cdnPathFromDate(dateOfPosting)
-        ].join('/');
+        let feedPath = this.feedRoot() + feed + '/';
 
-        let uri = path + "/" + slug + ".md";
+        let postPath = feedPath + cdnPathFromDate(dateOfPosting) + '/';
 
-        return this.createFeed(feed)
-            .then(() => this.makePath(path))
+        let postUri = postPath + slug + ".md";
+
+        return this.willFetch(feedPath)
+            .then(() => this.makePath(postPath))
             .then(
                 () => this.willFetch(
-                    uri, {
+                    postUri, {
                     method: 'PUT', headers: { 'Content-Type': 'text/plain' },
                     body: content
                 })
@@ -251,18 +365,7 @@ class Ibex {
     }
 
 
-    basePath(path) {
-        const separator = "/";
-        if (path.slice(-1) == separator) {
-            path = path.slice(0, -1);
-        }
-        const lastSeparatorPosition = path.lastIndexOf(separator);
 
-        return [
-            path.substr(lastSeparatorPosition + 1),
-            path.substr(0, lastSeparatorPosition + 1),
-        ];
-    }
 
     urlDomain(url) {
         //log("getting domain of ", url);
@@ -298,7 +401,18 @@ class Ibex {
 
 }
 
+function basePath(path) {
+    const separator = "/";
+    if (path.slice(-1) == separator) {
+        path = path.slice(0, -1);
+    }
+    const lastSeparatorPosition = path.lastIndexOf(separator);
 
+    return [
+        path.substr(lastSeparatorPosition + 1),
+        path.substr(0, lastSeparatorPosition + 1),
+    ];
+}
 
 function urlflatten(s) {
     return encodeURIComponent(s);
@@ -359,6 +473,10 @@ class FeedLoader {
                     &&
                     (postsToList)
                 ) {
+                    if (!basePath(aFile.uri)[0].match(/^[0-9]/)) {
+                        //console.log("skipping ", aFile.uri);
+                        continue;
+                    }
                     if (loadOlderPosts && aFile.uri >= that.first()) {
                         //log("skipping newer when looking for older:", aFile.uri, '>', that.first())
                         continue;
