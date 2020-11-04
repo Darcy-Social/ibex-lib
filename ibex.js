@@ -35,6 +35,7 @@ class Ibex {
     feedLocation = "feed";
     defaultFeed = 'main';
     manifestFileBasename = 'manifest.json'
+    profileFileBasename = 'profile.json'
     settingsFileBasename = 'config.json'
 
     constructor(me) {
@@ -46,6 +47,7 @@ class Ibex {
     root() { return this.myHost + '/' + this.myRootPath + '/'; }
     feedRoot() { return this.root() + this.feedLocation + '/'; }
     manifestFile() { return this.feedRoot() + this.manifestFileBasename; }
+    profileFile() { return this.root() + this.profileFileBasename; }
     configFile() { return this.root() + this.settingsFileBasename; }
 
     loadSettings() {
@@ -263,6 +265,19 @@ class Ibex {
             body: JSON.stringify(manifest, null, 2)
         })
             .then(() => this.ensureACL(this.manifestFile(), [[READ, Agents.PUBLIC]]))
+    }
+    profile() {
+        return this.willFetch(this.profileFile())
+            .then((res) => res.json())
+            .catch(() => { return {} });
+    }
+    saveProfile(profile) {
+        return this.willFetch(
+            this.profileFile(), {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(profile, null, 2)
+        })
+            .then(() => this.ensureACL(this.profileFile(), [[READ, Agents.PUBLIC]]))
     }
 
     deleteRecursive(folder, onlyFiles = false) {
