@@ -323,7 +323,7 @@ class Ibex {
                     .then(() => {
                         if (!onlyFiles) {
                             //console.log("deleting directory " + folder.uri);
-                            return fetcher.webOperation('DELETE', folder.uri)
+                            return this.willFetch(folder.uri, { method: 'DELETE' })
                         }
                     })
                     .then(res => { resolve() })
