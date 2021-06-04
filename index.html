@@ -11,11 +11,67 @@
     border: solid black 1px;
     padding: 1em;
   }
+
+  body{
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 16px;
+  }
+
+  #logresults{
+    border: 1px solid black;
+    border-radius: 0.5em;
+    padding: 10px;
+    color: white;
+    background: black;
+  }
+
+  #logresults div{
+    width: 100%;
+    font-family: 'Courier New', Courier, monospace;
+    padding: 5px 0 5px 0;
+    border-top: 1px solid gray;
+    margin-top:5px;
+  }
+
+  #logchecks{
+    border:1px solid #ccc;
+    padding:10px 0;
+    border-radius: 0.5em;
+    padding:.5em;
+    margin: 10px 0;
+  }
+
+  button{
+    padding:5px 10px;
+    border-radius: 99999px;
+    background-color: #0E92CC;
+    border:1px solid #0E92CC;
+    color:white;
+    font-size: 1em;
+    cursor: pointer;
+  }
+
+  h2{
+    margin:0;
+  }
+
+  #logout{
+    border:1px solid gray;
+    border-radius: .5em;
+    padding:.5em;
+  }
+
+  p{
+    margin:0;
+  }
+
 </style>
 
 <body>
   <h1 id="spinner" style="float: right;">🐐</h1>
-  <h1>IBEX <span id="origin"></span></h1>
+  <img src="logo.svg" style="width:20%;display:block;" />
+  <em>Tests for <a href="https://github.com/Darcy-Social/ibex-lib" target="_blank" >ibex-lib</a>, a Solid library for <a href="https://darcy.is" target="_blank">Darcy</a></em>
+  <br/><br/>
 
 
   <p id="login">
@@ -23,78 +79,25 @@
     <button id="loginbutton">log in</button>
   </p>
   <div id="logout" style="display: none;">
-    <p> You are logged in as <span id="user"></span>.</p>
+    <p>You are logged in as <span id="user"></span>.</p>
+    <em>Source Url: <span id="origin"></span></em>
+    <br/>
     <button id="logoutbutton">log out</button>
-    <div>
+    <div style="margin:20px 0;">
       <h2>Run Ibex Tests</h2>
-      <button id="run">run</button>
+      <button id="run">Run Tests</button>
     </div>
-    <div id="logchecks"></div>
-    <div id="logresults"></div>
+    Tests Status
+    <div id="logchecks"><small style="color:#666;"><em>No test started</em></small></div>
+    Log Results
+    <div id="logresults">
+      <div style="color:#ccc;"><small><em>No test started</em></small></div>
+    </div>
   </div>
 
   <script src="https://code.jquery.com/jquery-3.5.1.js"></script>
-  <script src="libs/solid-auth-client.bundle.js"></script>
-  <script src="libs/rdflib.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/solid-acl-parser/dist/browser/solid-acl-parser.bundle.js"></script>
-  <script src="libs/solid-acl-utils.bundle.js"> </script>
 
-  <script type="module" src="ibex.js"></script>
-
-  <script type="module">
-
-    import ibextest from "./tests/ibex-test.js";
-    import Ibex from "./ibex.js";
-
-    var log = (data) => { $('#logresults').append($('<p>').text(data)) }
-    window.addEventListener("load", function () {
-      const FOAF = $rdf.Namespace('http://xmlns.com/foaf/0.1/');
-
-      // Log the user in and out on click
-      const popupUri = 'popup.html';
-      $('#loginbutton').click(() => solid.auth.popupLogin({ popupUri }));
-      $('#logoutbutton').click(() => { solid.auth.logout().then(() => { updateUI() }) });
-      $('#logout').toggle();
-
-      let currentSession = null;
-
-      $('#run').click(() => {
-        $('#logresults').empty();
-        $('#logchecks').empty();
-        ibextest.run();
-      });
-
-
-      solid.auth.trackSession(session => {
-        const loggedIn = !!session;
-        currentSession = session;
-        $('#login').toggle(!loggedIn);
-        $('#logout').toggle(loggedIn);
-        if (loggedIn) {
-
-          $('#user').text(session.webId);
-
-          $('#origin').text(new URL(session.webId).origin);
-          // Use the user's WebID as default profile
-          if (!$('#profile').val()) {
-            $('#profile').val(session.webId);
-            ibextest.run();
-          }
-        }
-        updateUI();
-
-      });
-
-    });
-
-    function updateUI() {
-
-
-    }
-
-
-
-  </script>
+  <script src="bundle.js" ></script>
 </body>
 
 </html>

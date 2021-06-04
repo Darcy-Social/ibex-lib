@@ -1,12 +1,19 @@
-import ibextest from "./tests/ibex-test.js";
+const $rdf = require("rdflib");
+const SolidAclUtils = require('solid-acl-utils')
+const auth = require("solid-auth-client");
 
-// import { $rdf } from "./libs/rdflib.min.js";
+// import ibextest from "./tests/ibex-test.js";
+
+// import * as jsonld from 'jsonld';
+// import jsonldContext from '@/util/ldp.json'
+
 const FOAF = $rdf.Namespace('http://xmlns.com/foaf/0.1/');
 const LDP = $rdf.Namespace("http://www.w3.org/ns/ldp#");
 const RDF = $rdf.Namespace("http://www.w3.org/1999/02/22-rdf-syntax-ns#")
 const NS = $rdf.Namespace("http://www.w3.org/2006/vcard/ns#")
 
-const { AclApi, AclParser, Permissions, Agents } = SolidAclUtils;
+var { AclApi, AclParser, Permissions, Agents } = SolidAclUtils;
+
 const { READ, WRITE, CONTROL, APPEND } = Permissions;
 var logEntryCounter = 1;
 var log = (...data) => {
@@ -17,7 +24,7 @@ var log = (...data) => {
     }
 
     let logId = "logentry" + logEntryCounter++;
-    $('#logresults').append($('<pre>', { id: logId }).text(
+    $('#logresults').append($('<div>', { id: logId }).text(
         data.map(
             (e) => {
                 return ('string' !== typeof e) ? JSON.stringify(e, null, 2) : e
@@ -78,7 +85,7 @@ class Ibex {
         return this.willFetch(url, { method: 'DELETE' })
     }
     loadAcl(url) {
-        return new AclApi(solid.auth.fetch.bind(solid.auth), { autoSave: true }).loadFromFileUrl(url);
+        return new AclApi(auth.fetch.bind(auth), { autoSave: true }).loadFromFileUrl(url);
     }
 
     makePath(container, newFolder) {
@@ -121,7 +128,7 @@ class Ibex {
      * @param {string} feedName - name of the new feed
      * @param {string} color - color to assign to the feed, default value is black
      */
-    createFeed(feedName,color = '#000000') {
+    createFeed(feedName, color = '#000000') {
         //log("creating feed", feedName)
         return this.makePath(this.feedRoot(), feedName)
             .then((res) => {
@@ -277,6 +284,33 @@ class Ibex {
             .then((res) => res.json())
             .catch(() => { return {} });
     }
+
+    async podProfile(webId) {
+        console.log(webId)
+        let doc = {}
+        try {
+            doc = await jsonld.documentLoader(webId, function (err) {
+                if (err) {
+                    console.log(err)
+                }
+            })
+        } catch (e) {
+            alert(e)
+        }
+        console.log('doc', doc)
+        let jsonProfile = JSON.parse(doc.document)
+        console.log(jsonProfile)
+        const compacted = await jsonld.compact(jsonProfile, jsonldContext['@context']);
+        console.log("g", compacted.graph)
+        let p = compacted.graph.find(x => x.id == webId)
+        p.friends = p.friends.map(f => f.id) // should be feasible with jsonldContext
+        p.storage = p.storage.id
+        p.inbox = p.inbox.id
+        p.photo = p.photo.id
+        console.log(p)
+        return p
+    }
+
     saveProfile(profile) {
         return this.willFetch(
             this.profileFile(), {
@@ -284,6 +318,22 @@ class Ibex {
             body: JSON.stringify(profile, null, 2)
         })
             .then(() => this.ensureACL(this.profileFile(), [[READ, Agents.PUBLIC]]))
+    }
+
+    deleteRecursive(folder, onlyFiles = false) {
+        //console.log("deleting " + folder)
+        if (!folder.startsWith(this.root())) {
+            return Promise.reject("Invalid path: can't delete " + folder.uri)
+        }
+        return this._deleteRecursive($rdf.sym(folder), onlyFiles)
+            .then(() => this.manifest()
+                .then(manifest => {
+                    if (manifest[folder]) {
+                        //log("deleting", folder, "from manifest")
+                        delete manifest[folder];
+                        return this.saveManifest(manifest);
+                    }
+                }))
     }
 
     deleteRecursive(folder, onlyFiles = false) {
@@ -390,11 +440,12 @@ class Ibex {
 
     urlDomain(url) {
         //log("getting domain of ", url);
-        var a = document.createElement('a');
-
-        a.href = url;
-
-        return a.protocol + '//' + a.hostname + (!a.port ? '' : (":" + a.port));
+        if(url){
+            const urlObj = new URL(url);
+            return urlObj.protocol + '//' + urlObj.hostname + (!urlObj.port ? '' : (":" + urlObj.port));
+        }else{
+            return '';
+        }
     }
 
     willFetch(url, pars) {
@@ -404,7 +455,7 @@ class Ibex {
 
         return new Promise(
             (resolve, reject) => {
-                solid.auth.fetch(
+                auth.fetch(
                     url,
                     pars
                 ).then(response => {
@@ -705,5 +756,8 @@ class FeedAggregator {
 
 }
 
-export default Ibex;
-export { log, Ibex, FeedLoader, FeedStreamer, FeedAggregator };
+exports.Ibex = Ibex;
+exports.FeedStreamer = FeedStreamer;
+exports.FeedAggregator = FeedAggregator;
+exports.FeedLoader = FeedLoader;
+exports.log = log;
