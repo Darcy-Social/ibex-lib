@@ -1,4 +1,3 @@
-libs
-libs/*
-darcy-old.js
 .DS_Store
+node_modules
+bundle.js

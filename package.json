@@ -1,0 +1,32 @@
+{
+  "name": "ibex-lib",
+  "version": "1.0.0",
+  "description": "",
+  "main": "ibex.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "build-test-js":"npx browserify tests/scripts.js -o bundle.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/promocare/ibex-lib-npm.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/promocare/ibex-lib-npm/issues"
+  },
+  "homepage": "https://github.com/promocare/ibex-lib-npm#readme",
+  "dependencies": {
+    "jsonld": "^5.2.0",
+    "rdflib": "^2.2.2",
+    "solid": "^0.2.1",
+    "solid-acl-utils": "github:otto-aa/solid-acl-utils",
+    "solid-auth-client": "^2.5.5"
+  },
+  "devDependencies": {
+    "browserify": "^17.0.0"
+  }
+}

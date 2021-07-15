@@ -1,4 +1,8 @@
-import { Ibex, log, FeedLoader, FeedStreamer, FeedAggregator } from "../ibex.js";
+const { Ibex, log, FeedLoader, FeedStreamer, FeedAggregator } = require("../ibex.js");
+
+const $rdf = require("rdflib");
+const SolidAclUtils = require('solid-acl-utils')
+const auth = require("solid-auth-client");
 
 const FOAF = new $rdf.Namespace('http://xmlns.com/foaf/0.1/');
 const NS = new $rdf.Namespace("http://www.w3.org/2006/vcard/ns#")
@@ -413,7 +417,7 @@ let ibextest = {
         setTimeout(
             () => {
                 try {
-                    aclApi = new AclApi(solid.auth.fetch.bind(solid.auth), { autoSave: true });
+                    aclApi = new AclApi(auth.fetch.bind(auth), { autoSave: true });
                     let result = this[currentTest]();
                     // console.log(result)
                     if (typeof result === 'object' && typeof result.then === 'function') {
@@ -527,25 +531,25 @@ function assertEqual(expected, result, ...banner) {
 
 }
 function pass(...data) {
-    $('#logchecks').append('✔️');
+    $('#logchecks').append(' ✅ ');
     if (!data || !data.length) { return }
-    log("✔️", ...data);
+    log("✅", ...data);
 }
 function fail(...data) {
-    $('#logchecks').append('❌');
+    $('#logchecks').append(' ❌ ');
     log("❌", ...data);
     let trace = stacktrace();
     if (trace.length > 0) { log(trace) }
 }
 function meh(...data) {
-    $('#logchecks').append('😑');
+    $('#logchecks').append(' 😑 ');
     log("😑", ...data);
     let trace = stacktrace();
     if (trace.length > 0) { log(trace) }
 }
 
 function crash(...data) {
-    $('#logchecks').append('💥');
+    $('#logchecks').append(' 💥 ');
     log("💥", ...data);
 }
 function stacktrace(e) {
@@ -560,6 +564,6 @@ function stacktrace(e) {
     });
 }
 
-export default ibextest;
+exports.ibextest = ibextest;
 
 
