@@ -10,7 +10,7 @@ Darcy Ibex is a Node library for Darcy.
 Run the npm installation command to install the needed dependecies.
 
 ```
-npm i https://github.com/promocare/ibex-lib-npm
+npm i ibex-lib
 ```
 *npm module will be released soon*
 ##Usage
